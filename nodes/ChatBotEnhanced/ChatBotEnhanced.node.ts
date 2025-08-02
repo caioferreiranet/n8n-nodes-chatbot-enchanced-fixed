@@ -36,7 +36,7 @@ export class ChatBotEnhanced implements INodeType {
 		outputNames: ['Main', 'Status'],
 		credentials: [
 			{
-				name: 'redis',
+				name: 'redisApi',
 				required: true,
 			},
 		],
@@ -506,7 +506,7 @@ export class ChatBotEnhanced implements INodeType {
 		
 		try {
 			// Get Redis credentials (built-in)
-			const builtinCredentials = await this.getCredentials('redis') as BuiltinRedisCredential;
+			const builtinCredentials = await this.getCredentials('redisApi') as BuiltinRedisCredential;
 			const credentials = adaptBuiltinCredentials(builtinCredentials);
 			
 			// Initialize Redis manager
