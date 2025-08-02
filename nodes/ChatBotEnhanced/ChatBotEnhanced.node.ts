@@ -8,6 +8,7 @@ import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 // Import managers
 import { RedisManager } from './managers/RedisManager';
+import { adaptBuiltinCredentials, type BuiltinRedisCredential } from './redis-utils';
 import { RateLimiter } from './managers/RateLimiter';
 import { SessionManager } from './managers/SessionManager';
 import { UserStorage } from './managers/UserStorage';
@@ -16,13 +17,13 @@ import { MessageRouter } from './managers/MessageRouter';
 import { MessageBuffer } from './managers/MessageBuffer';
 
 // Import types
-import { RedisCredential, OperationType } from './types';
+import { OperationType } from './types';
 
 export class ChatBotEnhanced implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'ChatBot Enhanced',
 		name: 'chatBotEnhanced',
-		icon: 'https://r2.trigidigital.com/chatbot-enchanced.svg' as any,
+		icon: 'file:chatbot-enhanced.svg',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -35,7 +36,7 @@ export class ChatBotEnhanced implements INodeType {
 		outputNames: ['Main', 'Status'],
 		credentials: [
 			{
-				name: 'redisApi',
+				name: 'redis',
 				required: true,
 			},
 		],
@@ -504,8 +505,9 @@ export class ChatBotEnhanced implements INodeType {
 		let redisManager: RedisManager | null = null;
 		
 		try {
-			// Get Redis credentials
-			const credentials = await this.getCredentials('redisApi') as RedisCredential;
+			// Get Redis credentials (built-in)
+			const builtinCredentials = await this.getCredentials('redis') as BuiltinRedisCredential;
+			const credentials = adaptBuiltinCredentials(builtinCredentials);
 			
 			// Initialize Redis manager
 			redisManager = new RedisManager(credentials, {
