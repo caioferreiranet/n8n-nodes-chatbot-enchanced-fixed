@@ -35,6 +35,9 @@ Thumbs.db
 # Development & Testing (EXCLUDE ALL)
 tests/
 docs/
+.bmad-core/
+.claude/
+.web-bundles
 coverage/
 jest.cache/
 jest.config.js

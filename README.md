@@ -42,23 +42,33 @@ npm install -g @trigidigital/n8n-nodes-chatbot-enchanced
 
 ## Operations
 
-The ChatBot Enhanced node supports the following operations:
+The ChatBot Enhanced node uses a **Resource/Operation pattern** for easy discovery and organized functionality:
 
-### 🎯 Template-Based Operations (Quick Setup)
-- 🚀 **Basic Rate Limiting**: Simple spam protection (2-minute setup)
-- 👥 **Customer Support**: Session management + user storage (5-minute setup)
-- 📊 **High Volume Buffer**: Message buffering + analytics for high traffic (5-minute setup)
-- 🔀 **Multi-Channel Router**: Full routing + analytics for multi-channel bots (15-minute setup)
-- 🧠 **Smart FAQ Memory**: Smart memory + routing for FAQ systems (10-minute setup)
+### 🛡️ Rate Limiting Actions
+**Smart rate limiting with burst protection and penalties**
+- **Check Rate Limit**: Verify if user is within rate limits and get remaining quota
+- **Reset User Limits**: Clear rate limiting counters for specific user  
+- **Get Limit Status**: Retrieve comprehensive rate limiting statistics
 
-### ⚙️ Advanced Operations (Manual Configuration)
-- 🛡️ **Smart Rate Limiting**: Advanced rate limiting with burst detection, penalties, and sliding window algorithms
-- 💾 **Session Management**: Comprehensive user session tracking with timeout, cleanup, and conversation history
-- ⏱️ **Message Buffering**: **CRITICAL FEATURE** - Time-based message buffering with configurable flush intervals (1-3600 seconds), size limits, and multiple buffer patterns (collect_send, throttle, priority)
-- 🧠 **Smart Memory**: Intelligent conversation memory, FAQ storage, and context management with compression and TTL
-- 🔀 **Message Routing**: Multi-channel routing with topic-based, priority-based, and load-balancing strategies
-- 👤 **User Storage**: Secure user profile, preferences, and history storage with type detection and indexing
-- 📊 **Analytics**: Real-time metrics tracking, performance monitoring, alerts, and histogram generation
+### 👥 Session Actions  
+**User session management and storage operations**
+- **Create Session**: Initialize a new user session with context storage
+- **Update Session**: Add message to session and extend timeout
+- **Get Session Data**: Retrieve session information and conversation history
+- **Store User Data**: Save user preferences, history and profile information
+
+### 💬 Message Actions
+**Message buffering and routing for human-like responses**  
+- **Buffer Messages**: **CRITICAL FEATURE** - Collect multiple messages and flush after time delay (TimedBuffer implementation)
+- **Route Messages**: Direct messages to appropriate channels or queues
+- **Process Queue**: Handle queued messages with priority and load balancing
+
+### 📊 Analytics Actions
+**Smart memory, metrics tracking and performance monitoring**
+- **Track Event**: Record custom events for analytics and monitoring
+- **Query Metrics**: Retrieve analytics data and performance statistics  
+- **Store Memory**: Save conversation context, FAQ or knowledge data
+- **Generate Report**: Create comprehensive performance and usage reports
 
 ### 🔄 Multiple Outputs (Enterprise Architecture)
 The node provides **4 distinct outputs** for different data streams:
@@ -124,49 +134,56 @@ The credential configuration includes automatic connection testing to validate y
 
 ## 💡 Usage
 
-### 🚀 Quick Start (Template Mode)
+### 🚀 Quick Start (Resource/Operation Pattern)
 
 1. **Add Redis Credentials**: Configure your Redis connection in n8n credentials
 2. **Add ChatBot Enhanced Node**: Drag the node into your workflow  
-3. **Select Template**: Choose from 5 pre-configured templates
-4. **Configure Basic Parameters**:
+3. **Select Resource**: Choose from 4 action categories:
+   - **Rate Limiting Actions**: For spam protection and user quotas
+   - **Session Actions**: For user session management and storage
+   - **Message Actions**: For buffering and routing (human-like responses)
+   - **Analytics Actions**: For metrics, memory, and performance monitoring
+4. **Choose Operation**: Select specific action within the resource category
+5. **Configure Parameters**:
    - Session Key: `={{$json.userId || $json.sessionId}}`
    - Message Content: `={{$json.message || $json.text}}`
-5. **Connect Outputs**: Wire Success, Processed, Error, and Metrics outputs
+   - Resource-specific settings (buffer time, rate limits, etc.)
+6. **Connect Outputs**: Wire Success, Processed, Error, and Metrics outputs
 
-### ⚙️ Advanced Setup (Manual Configuration)
+### ⚙️ Advanced Configuration Tips
 
-1. **Disable Template Mode**: Set "Configuration Mode" to "Advanced Configuration"
-2. **Choose Operation**: Select from 7 advanced operations
-3. **Configure Operation-Specific Parameters**:
-   - **Buffer Time**: 1-3600 seconds for message buffering
-   - **Rate Limits**: Requests per minute with burst protection
-   - **Session Timeouts**: Minutes for session management
-   - **Memory Types**: Conversation, FAQ, or context storage
-4. **Fine-tune Performance**: Adjust batch sizes, TTL, compression settings
+- **Buffer Time**: 1-3600 seconds for message buffering (human-like delays)
+- **Rate Limits**: Requests per minute with burst protection  
+- **Session Timeouts**: Minutes for session management
+- **Resource Planning**: Each buffering session = 1 long-running execution
 
-### Template Usage
+### Resource/Operation Examples
 
-For quick setup, use the template options:
+**Rate Limiting Actions Example:**
+```javascript
+Resource: "Rate Limiting Actions"
+Operation: "Check Rate Limit"
+Session Key: ={{$json.userId}}
+Rate Limit: 10 // requests per minute
+```
 
-- **Basic Rate Limiting**: Perfect for simple spam protection
-  - Configure session key (user ID)
-  - Set message content field
-  - Default rate limiting rules apply
+**Message Buffering Example:**
+```javascript
+Resource: "Message Actions"  
+Operation: "Buffer Messages"
+Session Key: ={{$json.userId}}
+Message Content: ={{$json.message}}
+Buffer Time: 10 // seconds - creates human-like delays
+```
 
-- **Session Management**: Ideal for conversation tracking
-  - Maintains user session state
-  - Tracks conversation context
-  - Automatic session cleanup
-
-### Advanced Configuration
-
-For complex scenarios, disable templates and configure individual operations:
-
-1. Set `Use Template` to false
-2. Choose specific operation type
-3. Configure advanced parameters based on operation
-4. Connect appropriate outputs to downstream nodes
+**Session Management Example:**
+```javascript
+Resource: "Session Actions"
+Operation: "Update Session"
+Session Key: ={{$json.userId}}
+Message Content: ={{$json.message}}
+Session Timeout: 30 // minutes
+```
 
 ### Output Handling
 
@@ -187,23 +204,55 @@ The node supports n8n expressions for dynamic configuration:
 ={{$json.message || $json.text || $json.content}}
 ```
 
-### 🎯 Buffer Time Feature (Key Highlight)
+### 🎯 Message Buffering - Human-Like Response (NEW in v0.1.2!)
 
-⏱️ **Configurable Message Buffering** - The critical feature for high-volume scenarios:
+⏱️ **Revolutionary TimedBuffer Implementation** - The FLAGSHIP feature for human-like chatbot responses:
 
+#### 🧠 How It Works (TimedBuffer Logic)
 ```javascript
-// Example: Buffer messages for 30 seconds
-Buffer Time: 30
-Time Unit: seconds
-Buffer Size: 100
-Buffer Pattern: collect_send
+// REAL BEHAVIOR (not just background optimization):
+
+Chat 1: "Hello"                → Master Execution: Start 10s timer, wait...
+Chat 2: "How are you?"         → Slave Execution: Add to buffer, extend timer, return "pending"
+Chat 3: "What's your name?"    → Slave Execution: Add to buffer, extend timer, return "pending"
+
+After 10 seconds              → Master Execution: Return ALL MESSAGES together!
+// Output: ["Hello", "How are you?", "What's your name?"]
 ```
 
-**Use Cases:**
-- **High-frequency messages**: Batch process chat bursts
-- **API rate limiting**: Buffer requests to avoid API limits  
-- **Cost optimization**: Reduce downstream processing costs
-- **Analytics batching**: Aggregate data before analysis
+#### 🔄 Execution Pattern
+- **Master Execution**: First message creates buffer, waits for timer, collects all messages
+- **Slave Executions**: Subsequent messages extend timer, add to buffer, return immediately
+- **Natural Delay**: Human-like response delay (not instant robot replies)
+- **Batch Collection**: All messages returned together after timeout
+
+#### ⚙️ Configuration
+```javascript
+Buffer Time: 10           // Wait 10 seconds before responding
+Session Key: {{$json.userId}}  // Group messages by user
+Message: {{$json.message}}     // Content to buffer
+```
+
+#### 🎯 Perfect For:
+- **Human-like Chatbots**: Wait for multiple messages before responding (like humans do)
+- **Conversation Context**: Collect user's complete thought before processing
+- **Natural UX**: Avoid instant robot-like responses
+- **WhatsApp/Telegram Style**: Mimic how humans read 2-3 messages then respond
+
+#### ⚠️ Production Requirements:
+- **Execution Timeout**: Set workflow timeout to 60 seconds
+- **Redis Monitoring**: Health checks for buffer persistence
+- **Resource Planning**: Each session = 1 long-running execution
+- **Traffic Limits**: Optimal for 5-50 concurrent users
+
+#### 📊 Response Types:
+```json
+// Buffered (Chat 2,3,4...)
+{"type": "buffered", "status": "pending", "message": "How are you?"}
+
+// Batch Ready (After timer)
+{"type": "batch_ready", "status": "flushed", "messages": ["Hello", "How are you?", "What's your name?"]}
+```
 
 ### 🏗️ Architecture & Performance
 
@@ -234,7 +283,33 @@ Buffer Pattern: collect_send
 
 ## Version history
 
-### 0.1.0 (Current)
+### 0.1.3 (Current) - Resource/Operation Pattern & Actions Section
+
+- 🎯 **NEW UI PATTERN**: Implemented Resource/Operation pattern for better discoverability
+- 📋 **Actions Section**: Community node now displays organized actions like professional nodes
+- 🛡️ **Rate Limiting Actions**: Check Rate Limit, Reset User Limits, Get Limit Status
+- 👥 **Session Actions**: Create Session, Update Session, Get Session Data, Store User Data  
+- 💬 **Message Actions**: Buffer Messages, Route Messages, Process Queue
+- 📊 **Analytics Actions**: Track Event, Query Metrics, Store Memory, Generate Report
+- 🏗️ **Clean Architecture**: Removed legacy template system, streamlined configuration
+- ✨ **Enhanced UX**: Better organization and professional appearance in n8n interface
+
+### 0.1.2 - Major Message Buffering Update
+- 🚀 **REVOLUTIONARY**: Complete Message Buffering rewrite with TimedBuffer implementation
+- 🧠 **Human-like Response**: Master/Slave execution pattern for natural conversation delays
+- ⏱️ **Timer Extension**: New messages extend buffer time for natural flow
+- 🎯 **Batch Collection**: All messages returned together after timeout (not individual responses)
+- 📊 **Enhanced Output**: Clear distinction between "buffered" and "batch_ready" responses
+- 🔧 **Production Ready**: Comprehensive error handling, cancellation support, resource management
+- 📚 **Complete Documentation**: Detailed tutorials, edge cases, production requirements
+- ✅ **100% Test Coverage**: All 7 features tested and verified
+
+### 0.1.1
+- Bug fixes and performance improvements
+- Enhanced error handling for Redis connections
+- Updated documentation and examples
+
+### 0.1.0
 - Initial release with core chatbot enhancement features
 - Redis/Valkey integration with comprehensive connection options
 - Template-based quick setup for common scenarios

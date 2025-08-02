@@ -166,36 +166,38 @@ export class RateLimiter {
 		const windowStart = now - windowMs;
 		const requestId = `${now}-${Math.random()}`;
 
-		// Use Redis pipeline for atomic operations
-		const pipeline = client.multi();
-
-		// Remove expired entries
-		pipeline.zRemRangeByScore(key, 0, windowStart);
+		// First, clean up expired entries and check current count
+		const pipeline1 = client.multi();
+		pipeline1.zRemRangeByScore(key, 0, windowStart);
+		pipeline1.zCard(key);
 		
-		// Count current requests in window
-		pipeline.zCard(key);
+		const results1 = await pipeline1.exec();
 		
-		// Add current request timestamp
-		pipeline.zAdd(key, { score: now, value: requestId });
-		
-		// Set TTL for the key
-		pipeline.expire(key, Math.ceil(windowMs / 1000) * 2);
-
-		const results = await pipeline.exec();
-		
-		if (!results || results.length < 2) {
+		if (!results1 || results1.length < 2) {
 			throw new NodeOperationError(
 				null as any,
-				'Failed to execute sliding window rate limit check'
+				`Failed to execute sliding window cleanup: ${JSON.stringify(results1)}`
 			);
 		}
 
-		const currentRequests = (results[1] as any).reply as number;
+		// Get the count more safely
+		let currentRequests = 0;
+		const cardResult = results1[1];
+		if (cardResult !== null && cardResult !== undefined) {
+			currentRequests = Number(cardResult) || 0;
+		}
+		
 		const allowed = currentRequests < this.config.maxRequests;
+		let finalRequestCount = currentRequests;
 
-		// If not allowed, remove the request we just added
-		if (!allowed) {
-			await client.zRem(key, requestId);
+		// Only add the request if it's allowed
+		if (allowed) {
+			const pipeline2 = client.multi();
+			pipeline2.zAdd(key, { score: now, value: requestId });
+			pipeline2.expire(key, Math.ceil(windowMs / 1000) * 2);
+			
+			await pipeline2.exec();
+			finalRequestCount = currentRequests + 1;
 		}
 
 		// Calculate reset time (when oldest request expires)
@@ -204,11 +206,11 @@ export class RateLimiter {
 
 		return {
 			allowed,
-			remainingRequests: Math.max(0, this.config.maxRequests - currentRequests),
+			remainingRequests: Math.max(0, this.config.maxRequests - finalRequestCount),
 			resetTime,
-			totalRequests: currentRequests + (allowed ? 1 : 0),
+			totalRequests: finalRequestCount,
 			retryAfter,
-			algorithm: 'sliding_window',
+			algorithm: 'sliding_window' as const,
 			strategy: this.config.strategy,
 		};
 	}

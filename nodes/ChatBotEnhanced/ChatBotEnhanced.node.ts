@@ -8,7 +8,6 @@ import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 // Import managers
 import { RedisManager } from './managers/RedisManager';
-import { MessageBuffer } from './managers/MessageBuffer';
 import { RateLimiter } from './managers/RateLimiter';
 import { SessionManager } from './managers/SessionManager';
 import { UserStorage } from './managers/UserStorage';
@@ -16,7 +15,7 @@ import { AnalyticsTracker } from './managers/AnalyticsTracker';
 import { MessageRouter } from './managers/MessageRouter';
 
 // Import types
-import { RedisCredential, TemplateType, OperationType } from './types';
+import { RedisCredential, OperationType } from './types';
 
 export class ChatBotEnhanced implements INodeType {
 	description: INodeTypeDescription = {
@@ -25,6 +24,7 @@ export class ChatBotEnhanced implements INodeType {
 		icon: 'file:chatbot-enhanced.svg',
 		group: ['transform'],
 		version: 1,
+		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Enhanced chatbot node with Redis/Valkey integration for rate limiting, session management, and advanced features',
 		defaults: {
 			name: 'ChatBot Enhanced',
@@ -39,116 +39,186 @@ export class ChatBotEnhanced implements INodeType {
 			},
 		],
 		properties: [
-			// Template Configuration
+			// Resource Selection (Creates Actions Section)
 			{
-				displayName: 'Configuration Mode',
-				name: 'configMode',
+				displayName: 'Resource',
+				name: 'resource',
 				type: 'options',
+				noDataExpression: true,
 				options: [
 					{
-						name: 'Use Template (Recommended)',
-						value: 'template',
-						description: 'Start with pre-configured templates for common scenarios',
+						name: 'Rate Limiting Action',
+						value: 'rateLimiting',
+						description: 'Smart rate limiting with burst protection and penalties',
 					},
 					{
-						name: 'Advanced Configuration',
-						value: 'advanced',
-						description: 'Configure individual operations manually',
+						name: 'Session Action',
+						value: 'session',
+						description: 'User session management and storage operations',
+					},
+					{
+						name: 'Message Action',
+						value: 'message',
+						description: 'Message buffering and routing for human-like responses',
+					},
+					{
+						name: 'Analytics Action',
+						value: 'analytics',
+						description: 'Smart memory, metrics tracking and performance monitoring',
 					},
 				],
-				default: 'template',
-				description: 'Choose between template-based setup or manual configuration',
+				default: 'rateLimiting',
+				description: 'Choose the category of operations you want to perform',
 			},
 
-			// Template Selection
-			{
-				displayName: 'Template',
-				name: 'templateType',
-				type: 'options',
-				displayOptions: {
-					show: {
-						configMode: ['template'],
-					},
-				},
-				options: [
-					{
-						name: 'Basic Rate Limiting',
-						value: 'basicRateLimit',
-						description: 'Simple rate limiting to prevent spam (2 min setup)',
-					},
-					{
-						name: 'Customer Support',
-						value: 'customerSupport',
-						description: 'Session management + user storage for support (5 min setup)',
-					},
-					{
-						name: 'High Volume Buffer',
-						value: 'highVolumeBuffer',
-						description: 'Message buffering + analytics for high traffic (5 min setup)',
-					},
-					{
-						name: 'Multi-Channel Router',
-						value: 'multiChannelRouter',
-						description: 'Full routing + analytics for multi-channel bots (15 min setup)',
-					},
-					{
-						name: 'Smart FAQ Memory',
-						value: 'smartFaqMemory',
-						description: 'Smart memory + routing for FAQ systems (10 min setup)',
-					},
-				],
-				default: 'basicRateLimit',
-			},
-
-			// Advanced Operation Selection
+			// Rate Limiting Operations
 			{
 				displayName: 'Operation',
-				name: 'operationType',
+				name: 'operation',
 				type: 'options',
+				noDataExpression: true,
 				displayOptions: {
 					show: {
-						configMode: ['advanced'],
+						resource: ['rateLimiting'],
 					},
 				},
 				options: [
 					{
-						name: 'Analytics',
-						value: 'analytics',
-						description: 'Track metrics, performance, and generate alerts',
+						name: 'Check Rate Limit',
+						value: 'checkRateLimit',
+						action: 'Check rate limit status',
+						description: 'Verify if user is within rate limits and get remaining quota',
 					},
 					{
-						name: 'Message Buffering',
-						value: 'messageBuffering',
-						description: 'Buffer messages with time-based or size-based flushing',
+						name: 'Reset User Limits',
+						value: 'resetLimits',
+						action: 'Reset rate limits for user',
+						description: 'Clear rate limiting counters for specific user',
 					},
 					{
-						name: 'Message Routing',
-						value: 'messageRouting',
-						description: 'Route messages based on content, priority, or load balancing',
-					},
-					{
-						name: 'Session Management',
-						value: 'sessionManagement',
-						description: 'User session tracking with context and cleanup',
-					},
-					{
-						name: 'Smart Memory',
-						value: 'smartMemory',
-						description: 'Conversation memory with FAQ and context storage',
-					},
-					{
-						name: 'Smart Rate Limiting',
-						value: 'smartRateLimit',
-						description: 'Advanced rate limiting with burst detection and penalties',
-					},
-					{
-						name: 'User Storage',
-						value: 'userStorage',
-						description: 'Store user profiles, preferences, and history',
+						name: 'Get Limit Status',
+						value: 'getLimitStatus',
+						action: 'Get detailed limit status',
+						description: 'Retrieve comprehensive rate limiting statistics',
 					},
 				],
-				default: 'smartRateLimit',
+				default: 'checkRateLimit',
 			},
+
+			// Session Operations
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['session'],
+					},
+				},
+				options: [
+					{
+						name: 'Create Session',
+						value: 'createSession',
+						action: 'Create new user session',
+						description: 'Initialize a new user session with context storage',
+					},
+					{
+						name: 'Update Session',
+						value: 'updateSession',
+						action: 'Update existing session',
+						description: 'Add message to session and extend timeout',
+					},
+					{
+						name: 'Get Session Data',
+						value: 'getSession',
+						action: 'Retrieve session information',
+						description: 'Get current session state and conversation history',
+					},
+					{
+						name: 'Store User Data',
+						value: 'storeUserData',
+						action: 'Store user profile data',
+						description: 'Save user preferences, history and profile information',
+					},
+				],
+				default: 'createSession',
+			},
+
+			// Message Operations
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['message'],
+					},
+				},
+				options: [
+					{
+						name: 'Buffer Messages',
+						value: 'bufferMessages',
+						action: 'Buffer messages for human like responses',
+						description: 'Collect multiple messages and flush after time delay',
+					},
+					{
+						name: 'Route Messages',
+						value: 'routeMessages',
+						action: 'Route messages to channels',
+						description: 'Direct messages to appropriate channels or queues',
+					},
+					{
+						name: 'Process Queue',
+						value: 'processQueue',
+						action: 'Process message queue',
+						description: 'Handle queued messages with priority and load balancing',
+					},
+				],
+				default: 'bufferMessages',
+			},
+
+			// Analytics Operations
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['analytics'],
+					},
+				},
+				options: [
+					{
+						name: 'Track Event',
+						value: 'trackEvent',
+						action: 'Track analytics event',
+						description: 'Record custom events for analytics and monitoring',
+					},
+					{
+						name: 'Query Metrics',
+						value: 'queryMetrics',
+						action: 'Query performance metrics',
+						description: 'Retrieve analytics data and performance statistics',
+					},
+					{
+						name: 'Store Memory',
+						value: 'storeMemory',
+						action: 'Store in smart memory',
+						description: 'Save conversation context, FAQ or knowledge data',
+					},
+					{
+						name: 'Generate Report',
+						value: 'generateReport',
+						action: 'Generate analytics report',
+						description: 'Create comprehensive performance and usage reports',
+					},
+				],
+				default: 'trackEvent',
+			},
+
 
 			// Common Parameters
 			{
@@ -167,7 +237,7 @@ export class ChatBotEnhanced implements INodeType {
 				description: 'The message content to process (can use expressions)',
 			},
 
-			// Buffer Time Configuration (Critical Feature)
+			// Buffer Time Configuration - Message Buffering
 			{
 				displayName: 'Buffer Time (Seconds)',
 				name: 'bufferTime',
@@ -179,11 +249,14 @@ export class ChatBotEnhanced implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operationType: ['messageBuffering'],
+						resource: ['message'],
+						operation: ['bufferMessages'],
 					},
 				},
 				description: 'Time to wait before flushing buffered messages',
 			},
+
+			// Buffer Size - Message Buffering
 			{
 				displayName: 'Buffer Size',
 				name: 'bufferSize',
@@ -195,11 +268,14 @@ export class ChatBotEnhanced implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operationType: ['messageBuffering'],
+						resource: ['message'],
+						operation: ['bufferMessages'],
 					},
 				},
 				description: 'Maximum number of messages to buffer before flushing',
 			},
+
+			// Buffer Pattern - Message Buffering
 			{
 				displayName: 'Buffer Pattern',
 				name: 'bufferPattern',
@@ -224,7 +300,8 @@ export class ChatBotEnhanced implements INodeType {
 				default: 'collect_send',
 				displayOptions: {
 					show: {
-						operationType: ['messageBuffering'],
+						resource: ['message'],
+						operation: ['bufferMessages'],
 					},
 				},
 				description: 'How to handle buffered messages when flushing',
@@ -242,7 +319,7 @@ export class ChatBotEnhanced implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operationType: ['smartRateLimit'],
+						resource: ['rateLimiting'],
 					},
 				},
 				description: 'Maximum number of requests allowed per minute',
@@ -260,7 +337,7 @@ export class ChatBotEnhanced implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operationType: ['sessionManagement'],
+						resource: ['session'],
 					},
 				},
 				description: 'How long to keep sessions active without activity',
@@ -314,22 +391,15 @@ export class ChatBotEnhanced implements INodeType {
 					const startTime = Date.now();
 					
 					// Get parameters for this item
-					const configMode = this.getNodeParameter('configMode', itemIndex) as string;
+					const resource = this.getNodeParameter('resource', itemIndex) as string;
+					const operation = this.getNodeParameter('operation', itemIndex) as string;
 					const sessionKey = this.getNodeParameter('sessionKey', itemIndex) as string;
 					const messageContent = this.getNodeParameter('messageContent', itemIndex) as string;
 					const debugMode = this.getNodeParameter('debugMode', itemIndex) as boolean;
 					const keyPrefix = this.getNodeParameter('keyPrefix', itemIndex) as string;
 
-					// Determine operation type
-					let operationType: OperationType;
-					let templateType: TemplateType | undefined;
-
-					if (configMode === 'template') {
-						templateType = this.getNodeParameter('templateType', itemIndex) as TemplateType;
-						operationType = ChatBotEnhanced.mapTemplateToOperation(templateType);
-					} else {
-						operationType = this.getNodeParameter('operationType', itemIndex) as OperationType;
-					}
+					// Map new resource/operation to legacy operation type
+					const operationType = ChatBotEnhanced.mapResourceOperationToLegacy(resource, operation);
 
 					if (debugMode) {
 						console.log(`Processing item ${itemIndex} with operation: ${operationType}`);
@@ -434,18 +504,40 @@ export class ChatBotEnhanced implements INodeType {
 	}
 
 	/**
-	 * Map template type to operation type
+	 * Map new resource/operation pattern to legacy operation type
 	 */
-	private static mapTemplateToOperation(templateType: TemplateType): OperationType {
-		const templateMap: Record<TemplateType, OperationType> = {
-			basicRateLimit: 'smartRateLimit',
-			customerSupport: 'sessionManagement',
-			highVolumeBuffer: 'messageBuffering',
-			smartFaqMemory: 'smartMemory',
-			multiChannelRouter: 'messageRouting',
-		};
-
-		return templateMap[templateType];
+	private static mapResourceOperationToLegacy(resource: string, operation: string): OperationType {
+		// Rate Limiting Actions
+		if (resource === 'rateLimiting') {
+			return 'smartRateLimit';
+		}
+		
+		// Session Actions
+		if (resource === 'session') {
+			if (operation === 'storeUserData') {
+				return 'userStorage';
+			}
+			return 'sessionManagement';
+		}
+		
+		// Message Actions
+		if (resource === 'message') {
+			if (operation === 'bufferMessages') {
+				return 'messageBuffering';
+			}
+			return 'messageRouting';
+		}
+		
+		// Analytics Actions
+		if (resource === 'analytics') {
+			if (operation === 'storeMemory') {
+				return 'smartMemory';
+			}
+			return 'analytics';
+		}
+		
+		// Default fallback
+		return 'smartRateLimit';
 	}
 
 	/**
@@ -658,90 +750,216 @@ export class ChatBotEnhanced implements INodeType {
 		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
 	) {
 		const bufferTime = executeFunctions.getNodeParameter('bufferTime', params.itemIndex, 30) as number;
-		const bufferSize = executeFunctions.getNodeParameter('bufferSize', params.itemIndex, 100) as number;
-		const bufferPattern = executeFunctions.getNodeParameter('bufferPattern', params.itemIndex, 'collect_send') as string;
-
-		const messageBuffer = new MessageBuffer(redisManager, {
-			pattern: bufferPattern as any,
-			maxSize: bufferSize,
-			flushInterval: bufferTime,
-			enableStreams: true,
-			streamMaxLength: 10000,
-			keyPrefix: params.keyPrefix,
-		});
-
-		const result = await messageBuffer.addMessage(params.sessionKey, {
-			content: params.messageContent,
-			priority: 1,
-			metadata: {
-				timestamp: Date.now(),
-				source: 'chatbot-enhanced',
-			},
-		});
-
-		if (params.debugMode) {
-			console.log(`Buffer result for ${params.sessionKey}:`, result);
+		
+		// Convert to milliseconds
+		const waitAmount = bufferTime * 1000;
+		const bufferKey = `${params.keyPrefix}:buffer:${params.sessionKey}`;
+		
+		interface BufferState {
+			exp: number;
+			data: string[];
 		}
-
-		// Get buffer state for metrics
-		const bufferState = await messageBuffer.getBuffer(params.sessionKey);
-
-		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'messageBuffering',
-					bufferId: result.bufferId,
-					messageId: result.messageId,
-					shouldFlush: result.shouldFlush,
-					bufferConfig: {
-						bufferTime,
-						bufferSize,
-						pattern: bufferPattern,
-					},
-				},
-				timestamp: Date.now(),
-			},
-			processed: {
-				type: 'processed',
-				data: {
-					originalMessage: params.messageContent,
-					transformedMessage: params.messageContent,
-					enrichmentData: {
-						buffered: true,
-						bufferPosition: bufferState?.messages.length || 0,
-						estimatedFlushTime: bufferState?.nextFlush || Date.now() + (bufferTime * 1000),
-					},
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'messageBuffering',
-					metrics: {
-						bufferSize: bufferState?.messages.length || 0,
-						maxBufferSize: bufferSize,
-						bufferUtilization: ((bufferState?.messages.length || 0) / bufferSize) * 100,
-						timeToFlush: (bufferState?.nextFlush || Date.now()) - Date.now(),
-					},
-					performance: {
-						processingTime: 0,
-						queueSize: bufferState?.messages.length || 0,
-						redisHealth: redisManager.isAvailable(),
-					},
-					alerts: result.shouldFlush ? [{
-						level: 'info' as const,
-						message: 'Buffer flush triggered',
-						threshold: bufferSize,
-						currentValue: bufferState?.messages.length || 0,
-					}] : [],
-				},
-				timestamp: Date.now(),
-			},
+		
+		const getBufferState = async (): Promise<BufferState | null> => {
+			return redisManager.executeOperation(async (client) => {
+				try {
+					const val = await client.get(bufferKey);
+					if (!val) return null;
+					return JSON.parse(val) as BufferState;
+				} catch (e) {
+					return null;
+				}
+			});
 		};
+		
+		// Setup cancellation handler
+		executeFunctions.onExecutionCancellation(async () => {
+			await redisManager.executeOperation(async (client) => {
+				await client.del(bufferKey);
+			});
+		});
+		
+		const existsBuffer = await getBufferState();
+		
+		if (!existsBuffer) {
+			// MASTER EXECUTION - Create buffer and wait
+			if (params.debugMode) {
+				console.log(`Master execution started for session: ${params.sessionKey}`);
+			}
+			
+			const bufferState: BufferState = {
+				exp: Date.now() + waitAmount,
+				data: [params.messageContent],
+			};
+			
+			await redisManager.executeOperation(async (client) => {
+				await client.set(bufferKey, JSON.stringify(bufferState));
+			});
+			
+			// Wait loop - check Redis periodically
+			let resume = false;
+			while (!resume) {
+				const refreshBuffer = await getBufferState();
+				if (!refreshBuffer) {
+					throw new NodeOperationError(
+						executeFunctions.getNode(),
+						`Error retrieving buffer state from Redis. Key: "${bufferKey}". Possible causes: nonexistent key, invalid JSON value, or connection error.`
+					);
+				}
+				
+				const timeLeft = Math.max(0, refreshBuffer.exp - Date.now());
+				resume = timeLeft === 0;
+				if (resume) break;
+				
+				// Sleep for minimum of timeLeft or 1 second to allow other executions to update
+				const sleepTime = Math.min(timeLeft, 1000);
+				await new Promise((resolve) => {
+					const timer = setTimeout(resolve, sleepTime);
+					executeFunctions.onExecutionCancellation(() => clearTimeout(timer));
+				});
+			}
+			
+			// Get final buffer state and return all messages
+			const finalBuffer = await getBufferState();
+			if (!finalBuffer) {
+				throw new NodeOperationError(
+					executeFunctions.getNode(),
+					`Buffer was deleted during execution. Key: "${bufferKey}".`
+				);
+			}
+			
+			// Clean up buffer
+			await redisManager.executeOperation(async (client) => {
+				await client.del(bufferKey);
+			});
+			
+			if (params.debugMode) {
+				console.log(`Master execution completed. Total messages: ${finalBuffer.data.length}`);
+			}
+			
+			// Return batch of all messages
+			return {
+				success: {
+					type: 'success',
+					data: {
+						type: 'batch_ready',
+						status: 'flushed',
+						messages: finalBuffer.data,
+						totalMessages: finalBuffer.data.length,
+						sessionId: params.sessionKey,
+						operationType: 'messageBuffering',
+						flushTrigger: 'time',
+						bufferConfig: {
+							bufferTime,
+						},
+					},
+					timestamp: Date.now(),
+				},
+				processed: {
+					type: 'processed',
+					data: {
+						originalMessage: params.messageContent,
+						transformedMessage: finalBuffer.data.join(' | '),
+						enrichmentData: {
+							buffered: true,
+							totalMessagesCollected: finalBuffer.data.length,
+							bufferDuration: bufferTime,
+							flushType: 'time_based',
+						},
+					},
+					timestamp: Date.now(),
+				},
+				metrics: {
+					type: 'metrics',
+					data: {
+						operationType: 'messageBuffering',
+						metrics: {
+							totalMessagesBuffered: finalBuffer.data.length,
+							bufferTime: bufferTime,
+							actualWaitTime: waitAmount,
+							flushTrigger: 'time',
+						},
+						performance: {
+							processingTime: 0,
+							bufferEfficiency: 100,
+							redisHealth: redisManager.isAvailable(),
+						},
+					},
+					timestamp: Date.now(),
+				},
+			};
+			
+		} else {
+			// SLAVE EXECUTION - Add to buffer and return skipped
+			if (params.debugMode) {
+				console.log(`Slave execution for session: ${params.sessionKey}, adding message`);
+			}
+			
+			const { data } = existsBuffer;
+			data.push(params.messageContent);
+			
+			// Reset timer (extend wait time)
+			const newBufferState: BufferState = {
+				exp: Date.now() + waitAmount,
+				data,
+			};
+			
+			await redisManager.executeOperation(async (client) => {
+				await client.set(bufferKey, JSON.stringify(newBufferState));
+			});
+			
+			// Return skipped response
+			return {
+				success: {
+					type: 'success',
+					data: {
+						type: 'buffered',
+						status: 'pending',
+						message: params.messageContent,
+						sessionId: params.sessionKey,
+						operationType: 'messageBuffering',
+						bufferInfo: {
+							position: data.length,
+							totalBuffered: data.length,
+							timeToFlush: bufferTime,
+							estimatedFlushTime: new Date(newBufferState.exp).toISOString(),
+						},
+					},
+					timestamp: Date.now(),
+				},
+				processed: {
+					type: 'processed',
+					data: {
+						originalMessage: params.messageContent,
+						transformedMessage: params.messageContent,
+						enrichmentData: {
+							buffered: true,
+							bufferPosition: data.length,
+							timerReset: true,
+							waitingForFlush: true,
+						},
+					},
+					timestamp: Date.now(),
+				},
+				metrics: {
+					type: 'metrics',
+					data: {
+						operationType: 'messageBuffering',
+						metrics: {
+							messagesInBuffer: data.length,
+							bufferPosition: data.length,
+							timerExtended: true,
+						},
+						performance: {
+							processingTime: 0,
+							bufferUtilization: (data.length / 100) * 100, // Assume max 100 for percentage
+							redisHealth: redisManager.isAvailable(),
+						},
+					},
+					timestamp: Date.now(),
+				},
+			};
+		}
 	}
 
 	/**
