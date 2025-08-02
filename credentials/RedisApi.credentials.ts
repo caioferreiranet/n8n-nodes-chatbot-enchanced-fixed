@@ -12,7 +12,7 @@ export class RedisApi implements ICredentialType {
 
 	documentationUrl = 'https://redis.io/docs/';
 
-	icon = 'file:redis.svg';
+	icon = 'file:redis.svg' as const;
 
 	properties: INodeProperties[] = [
 		// Connection Type Selection
