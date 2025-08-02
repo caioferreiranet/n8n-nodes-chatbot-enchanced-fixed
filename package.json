@@ -1,6 +1,6 @@
 {
   "name": "@trigidigital/n8n-nodes-chatbot-enchanced",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Enhanced chatbot functionality with Redis/Valkey integration for rate limiting, buffer time, session management, and advanced features",
   "keywords": [
     "n8n-community-node-package",
