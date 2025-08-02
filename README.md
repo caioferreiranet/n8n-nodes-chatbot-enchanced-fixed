@@ -4,8 +4,6 @@ This is an n8n community node. It lets you use enhanced chatbot capabilities wit
 
 ChatBot Enhanced provides advanced chatbot functionality including rate limiting, session management, message buffering, smart memory, message routing, user storage, and analytics. It uses Redis or Valkey as the backend for high-performance data operations and is designed for production chatbot applications.
 
-[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
-
 [Installation](#installation)  
 [Operations](#operations)  
 [Credentials](#credentials)  

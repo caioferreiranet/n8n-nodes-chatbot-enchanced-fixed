@@ -27,4 +27,11 @@
 		"nodes/**/*.json",
 		"package.json",
 	],
+	"exclude": [
+		"**/*.test.ts",
+		"**/__tests__/**",
+		"**/managers/**",
+		"**/templates/**",
+		"**/utils.ts"
+	],
 }
