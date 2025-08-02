@@ -308,20 +308,6 @@ export class ChatBotEnhanced implements INodeType {
 				description: 'How to handle buffered messages when flushing',
 			},
 
-			// Enhanced Buffer Options
-			{
-				displayName: 'Use Enhanced Buffer Manager',
-				name: 'useEnhancedBuffer',
-				type: 'boolean',
-				default: true,
-				displayOptions: {
-					show: {
-						resource: ['message'],
-						operation: ['bufferMessages'],
-					},
-				},
-				description: 'Whether to enable smart buffering with built-in spam protection. Recommended for most chatbot workflows to create more natural conversations.',
-			},
 
 			// Anti-Spam Detection
 			{
@@ -354,8 +340,7 @@ export class ChatBotEnhanced implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['message'],
-						operation: ['bufferMessages'],
-						useEnhancedBuffer: [true]
+						operation: ['bufferMessages']
 					}
 				},
 				description: '🛡️ Protect your chatbot from spam messages. Choose how to detect unwanted or repetitive content automatically.'
@@ -388,7 +373,6 @@ export class ChatBotEnhanced implements INodeType {
 					show: {
 						resource: ['message'],
 						operation: ['bufferMessages'],
-						useEnhancedBuffer: [true],
 						antiSpamType: ['repeated', 'flood', 'pattern']
 					}
 				},
@@ -410,7 +394,6 @@ export class ChatBotEnhanced implements INodeType {
 					show: {
 						resource: ['message'],
 						operation: ['bufferMessages'],
-						useEnhancedBuffer: [true],
 						antiSpamType: ['repeated']
 					}
 				},
@@ -431,7 +414,6 @@ export class ChatBotEnhanced implements INodeType {
 					show: {
 						resource: ['message'],
 						operation: ['bufferMessages'],
-						useEnhancedBuffer: [true],
 						antiSpamType: ['flood']
 					}
 				},
@@ -451,7 +433,6 @@ export class ChatBotEnhanced implements INodeType {
 					show: {
 						resource: ['message'],
 						operation: ['bufferMessages'],
-						useEnhancedBuffer: [true],
 						antiSpamType: ['flood']
 					}
 				},
@@ -940,14 +921,8 @@ export class ChatBotEnhanced implements INodeType {
 		executeFunctions: IExecuteFunctions,
 		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
 	) {
-		// Check if enhanced buffering is enabled (feature flag)
-		const useEnhancedBuffer = executeFunctions.getNodeParameter('useEnhancedBuffer', params.itemIndex, true) as boolean;
-		
-		if (useEnhancedBuffer) {
-			return this.executeEnhancedMessageBuffering(redisManager, executeFunctions, params);
-		} else {
-			return this.executeLegacyMessageBuffering(redisManager, executeFunctions, params);
-		}
+		// Always use enhanced buffering with anti-spam capabilities
+		return this.executeEnhancedMessageBuffering(redisManager, executeFunctions, params);
 	}
 
 	/**
@@ -1160,226 +1135,6 @@ export class ChatBotEnhanced implements INodeType {
 		}
 	}
 
-	/**
-	 * Execute Legacy Message Buffering (Original Implementation)
-	 */
-	private static async executeLegacyMessageBuffering(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
-	) {
-		const bufferTime = executeFunctions.getNodeParameter('bufferTime', params.itemIndex, 30) as number;
-		
-		// Convert to milliseconds
-		const waitAmount = bufferTime * 1000;
-		const bufferKey = `${params.keyPrefix}:buffer:${params.sessionKey}`;
-		
-		interface BufferState {
-			exp: number;
-			data: string[];
-		}
-		
-		const getBufferState = async (): Promise<BufferState | null> => {
-			return redisManager.executeOperation(async (client) => {
-				try {
-					const val = await client.get(bufferKey);
-					if (!val) return null;
-					return JSON.parse(val) as BufferState;
-				} catch (e) {
-					return null;
-				}
-			});
-		};
-		
-		// Setup cancellation handler
-		executeFunctions.onExecutionCancellation(async () => {
-			await redisManager.executeOperation(async (client) => {
-				await client.del(bufferKey);
-			});
-		});
-		
-		const existsBuffer = await getBufferState();
-		
-		if (!existsBuffer) {
-			// MASTER EXECUTION - Create buffer and wait
-			if (params.debugMode) {
-				console.log(`Master execution started for session: ${params.sessionKey}`);
-			}
-			
-			const bufferState: BufferState = {
-				exp: Date.now() + waitAmount,
-				data: [params.messageContent],
-			};
-			
-			await redisManager.executeOperation(async (client) => {
-				await client.set(bufferKey, JSON.stringify(bufferState));
-			});
-			
-			// Wait loop - check Redis periodically
-			let resume = false;
-			while (!resume) {
-				const refreshBuffer = await getBufferState();
-				if (!refreshBuffer) {
-					throw new NodeOperationError(
-						executeFunctions.getNode(),
-						`Error retrieving buffer state from Redis. Key: "${bufferKey}". Possible causes: nonexistent key, invalid JSON value, or connection error.`
-					);
-				}
-				
-				const timeLeft = Math.max(0, refreshBuffer.exp - Date.now());
-				resume = timeLeft === 0;
-				if (resume) break;
-				
-				// Sleep for minimum of timeLeft or 1 second to allow other executions to update
-				const sleepTime = Math.min(timeLeft, 1000);
-				await new Promise((resolve) => {
-					const timer = setTimeout(resolve, sleepTime);
-					executeFunctions.onExecutionCancellation(() => clearTimeout(timer));
-				});
-			}
-			
-			// Get final buffer state and return all messages
-			const finalBuffer = await getBufferState();
-			if (!finalBuffer) {
-				throw new NodeOperationError(
-					executeFunctions.getNode(),
-					`Buffer was deleted during execution. Key: "${bufferKey}".`
-				);
-			}
-			
-			// Clean up buffer
-			await redisManager.executeOperation(async (client) => {
-				await client.del(bufferKey);
-			});
-			
-			if (params.debugMode) {
-				console.log(`Master execution completed. Total messages: ${finalBuffer.data.length}`);
-			}
-			
-			// Return batch of all messages
-			return {
-				success: {
-					type: 'success',
-					data: {
-						type: 'batch_ready',
-						status: 'flushed',
-						messages: finalBuffer.data,
-						totalMessages: finalBuffer.data.length,
-						sessionId: params.sessionKey,
-						operationType: 'messageBuffering',
-						flushTrigger: 'time',
-						bufferConfig: {
-							bufferTime,
-						},
-					},
-					timestamp: Date.now(),
-				},
-				processed: {
-					type: 'processed',
-					data: {
-						originalMessage: params.messageContent,
-						transformedMessage: finalBuffer.data.join(' | '),
-						enrichmentData: {
-							buffered: true,
-							totalMessagesCollected: finalBuffer.data.length,
-							bufferDuration: bufferTime,
-							flushType: 'time_based',
-						},
-					},
-					timestamp: Date.now(),
-				},
-				metrics: {
-					type: 'metrics',
-					data: {
-						operationType: 'messageBuffering',
-						metrics: {
-							totalMessagesBuffered: finalBuffer.data.length,
-							bufferTime: bufferTime,
-							actualWaitTime: waitAmount,
-							flushTrigger: 'time',
-						},
-						performance: {
-							processingTime: 0,
-							bufferEfficiency: 100,
-							redisHealth: redisManager.isAvailable(),
-						},
-					},
-					timestamp: Date.now(),
-				},
-			};
-			
-		} else {
-			// SLAVE EXECUTION - Add to buffer and return skipped
-			if (params.debugMode) {
-				console.log(`Slave execution for session: ${params.sessionKey}, adding message`);
-			}
-			
-			const { data } = existsBuffer;
-			data.push(params.messageContent);
-			
-			// Reset timer (extend wait time)
-			const newBufferState: BufferState = {
-				exp: Date.now() + waitAmount,
-				data,
-			};
-			
-			await redisManager.executeOperation(async (client) => {
-				await client.set(bufferKey, JSON.stringify(newBufferState));
-			});
-			
-			// Return skipped response
-			return {
-				success: {
-					type: 'success',
-					data: {
-						type: 'buffered',
-						status: 'pending',
-						message: params.messageContent,
-						sessionId: params.sessionKey,
-						operationType: 'messageBuffering',
-						bufferInfo: {
-							position: data.length,
-							totalBuffered: data.length,
-							timeToFlush: bufferTime,
-							estimatedFlushTime: new Date(newBufferState.exp).toISOString(),
-						},
-					},
-					timestamp: Date.now(),
-				},
-				processed: {
-					type: 'processed',
-					data: {
-						originalMessage: params.messageContent,
-						transformedMessage: params.messageContent,
-						enrichmentData: {
-							buffered: true,
-							bufferPosition: data.length,
-							timerReset: true,
-							waitingForFlush: true,
-						},
-					},
-					timestamp: Date.now(),
-				},
-				metrics: {
-					type: 'metrics',
-					data: {
-						operationType: 'messageBuffering',
-						metrics: {
-							messagesInBuffer: data.length,
-							bufferPosition: data.length,
-							timerExtended: true,
-						},
-						performance: {
-							processingTime: 0,
-							bufferUtilization: (data.length / 100) * 100, // Assume max 100 for percentage
-							redisHealth: redisManager.isAvailable(),
-						},
-					},
-					timestamp: Date.now(),
-				},
-			};
-		}
-	}
 
 	/**
 	 * Execute Smart Memory
