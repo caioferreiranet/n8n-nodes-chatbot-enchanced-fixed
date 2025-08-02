@@ -13,6 +13,7 @@ import { SessionManager } from './managers/SessionManager';
 import { UserStorage } from './managers/UserStorage';
 import { AnalyticsTracker } from './managers/AnalyticsTracker';
 import { MessageRouter } from './managers/MessageRouter';
+import { MessageBuffer } from './managers/MessageBuffer';
 
 // Import types
 import { RedisCredential, OperationType } from './types';
@@ -21,7 +22,7 @@ export class ChatBotEnhanced implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'ChatBot Enhanced',
 		name: 'chatBotEnhanced',
-		icon: 'file:chatbot-enhanced.png',
+		icon: 'file:chatbot-enhanced.svg',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -30,8 +31,8 @@ export class ChatBotEnhanced implements INodeType {
 			name: 'ChatBot Enhanced',
 		},
 		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main, NodeConnectionType.Main, NodeConnectionType.Main, NodeConnectionType.Main],
-		outputNames: ['Success', 'Processed', 'Error', 'Metrics'],
+		outputs: [NodeConnectionType.Main, NodeConnectionType.Main],
+		outputNames: ['Main', 'Status'],
 		credentials: [
 			{
 				name: 'redisApi',
@@ -307,6 +308,156 @@ export class ChatBotEnhanced implements INodeType {
 				description: 'How to handle buffered messages when flushing',
 			},
 
+			// Enhanced Buffer Options
+			{
+				displayName: 'Use Enhanced Buffer Manager',
+				name: 'useEnhancedBuffer',
+				type: 'boolean',
+				default: true,
+				displayOptions: {
+					show: {
+						resource: ['message'],
+						operation: ['bufferMessages'],
+					},
+				},
+				description: 'Whether to enable smart buffering with built-in spam protection. Recommended for most chatbot workflows to create more natural conversations.',
+			},
+
+			// Anti-Spam Detection
+			{
+				displayName: 'Anti-Spam Detection',
+				name: 'antiSpamType',
+				type: 'options',
+				options: [
+					{
+						name: 'Disabled',
+						value: 'disabled',
+						description: '⚪ Turn off spam protection - all messages will be processed normally'
+					},
+					{
+						name: 'Repeated Text Detection',
+						value: 'repeated',
+						description: '🔄 Catch users sending the same or very similar messages repeatedly (like "help help help")'
+					},
+					{
+						name: 'Flood Protection',
+						value: 'flood',
+						description: '⚡ Stop users from flooding your chatbot with too many messages in a short time'
+					},
+					{
+						name: 'Custom Pattern Match',
+						value: 'pattern',
+						description: '🎯 Advanced: Block messages containing specific words, URLs, phone numbers, or email addresses'
+					}
+				],
+				default: 'disabled',
+				displayOptions: {
+					show: {
+						resource: ['message'],
+						operation: ['bufferMessages'],
+						useEnhancedBuffer: [true]
+					}
+				},
+				description: '🛡️ Protect your chatbot from spam messages. Choose how to detect unwanted or repetitive content automatically.'
+			},
+
+			// Spam Action
+			{
+				displayName: 'Spam Action',
+				name: 'spamAction',
+				type: 'options',
+				options: [
+					{
+						name: 'Block Message',
+						value: 'block',
+						description: '🚫 Block spam completely - these messages won\'t be processed at all (recommended)'
+					},
+					{
+						name: 'Delay Extra Time',
+						value: 'delay',
+						description: '⏱️ Slow down spam processing - add extra waiting time before handling suspicious messages'
+					},
+					{
+						name: 'Mark as Spam',
+						value: 'mark',
+						description: '🏷️ Mark as spam but still process - useful for monitoring what gets detected as spam'
+					}
+				],
+				default: 'block',
+				displayOptions: {
+					show: {
+						resource: ['message'],
+						operation: ['bufferMessages'],
+						useEnhancedBuffer: [true],
+						antiSpamType: ['repeated', 'flood', 'pattern']
+					}
+				},
+				description: '⚙️ What should happen when spam is detected? Block it completely, delay it, or just mark it for review'
+			},
+
+			// Similarity Threshold
+			{
+				displayName: 'Similarity Threshold (%)',
+				name: 'similarityThreshold',
+				type: 'number',
+				default: 80,
+				typeOptions: {
+					minValue: 10,
+					maxValue: 100,
+					numberPrecision: 0
+				},
+				displayOptions: {
+					show: {
+						resource: ['message'],
+						operation: ['bufferMessages'],
+						useEnhancedBuffer: [true],
+						antiSpamType: ['repeated']
+					}
+				},
+				description: '📊 How similar must messages be to count as spam? 80% = very similar, 95% = nearly identical. Higher = stricter detection.'
+			},
+
+			// Flood Protection Settings
+			{
+				displayName: 'Max Messages in Window',
+				name: 'floodMaxMessages',
+				type: 'number',
+				default: 5,
+				typeOptions: {
+					minValue: 2,
+					maxValue: 50
+				},
+				displayOptions: {
+					show: {
+						resource: ['message'],
+						operation: ['bufferMessages'],
+						useEnhancedBuffer: [true],
+						antiSpamType: ['flood']
+					}
+				},
+				description: '📝 Maximum messages allowed in the time window. Example: 5 messages means after 5 messages, additional ones are spam.'
+			},
+
+			{
+				displayName: 'Flood Time Window (Seconds)',
+				name: 'floodTimeWindow',
+				type: 'number',
+				default: 30,
+				typeOptions: {
+					minValue: 5,
+					maxValue: 300
+				},
+				displayOptions: {
+					show: {
+						resource: ['message'],
+						operation: ['bufferMessages'],
+						useEnhancedBuffer: [true],
+						antiSpamType: ['flood']
+					}
+				},
+				description: '⏰ Time window for counting messages. Example: 30 seconds means count messages in the last 30 seconds.'
+			},
+
 			// Rate Limiting Configuration
 			{
 				displayName: 'Rate Limit (Requests per Minute)',
@@ -500,7 +651,47 @@ export class ChatBotEnhanced implements INodeType {
 			}
 		}
 
-		return [successItems, processedItems, errorItems, metricsItems];
+		// Combine outputs: Main (Success + Processed), Status (Error + Metrics + Anti-spam)
+		// Add backward compatibility metadata to identify original output type
+		const mainOutput = [
+			...successItems.map(item => ({
+				...item,
+				json: {
+					...item.json,
+					_outputType: 'success',
+					_originalOutput: 0 // Original Success output index
+				}
+			})),
+			...processedItems.map(item => ({
+				...item,
+				json: {
+					...item.json,
+					_outputType: 'processed',
+					_originalOutput: 1 // Original Processed output index
+				}
+			}))
+		];
+		
+		const statusOutput = [
+			...errorItems.map(item => ({
+				...item,
+				json: {
+					...item.json,
+					_outputType: 'error',
+					_originalOutput: 2 // Original Error output index
+				}
+			})),
+			...metricsItems.map(item => ({
+				...item,
+				json: {
+					...item.json,
+					_outputType: 'metrics',
+					_originalOutput: 3 // Original Metrics output index
+				}
+			}))
+		];
+		
+		return [mainOutput, statusOutput];
 	}
 
 	/**
@@ -742,9 +933,237 @@ export class ChatBotEnhanced implements INodeType {
 	}
 
 	/**
-	 * Execute Message Buffering (Critical Feature)
+	 * Execute Message Buffering (Enhanced with Anti-Spam)
 	 */
 	private static async executeMessageBuffering(
+		redisManager: RedisManager,
+		executeFunctions: IExecuteFunctions,
+		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
+	) {
+		// Check if enhanced buffering is enabled (feature flag)
+		const useEnhancedBuffer = executeFunctions.getNodeParameter('useEnhancedBuffer', params.itemIndex, true) as boolean;
+		
+		if (useEnhancedBuffer) {
+			return this.executeEnhancedMessageBuffering(redisManager, executeFunctions, params);
+		} else {
+			return this.executeLegacyMessageBuffering(redisManager, executeFunctions, params);
+		}
+	}
+
+	/**
+	 * Execute Enhanced Message Buffering with Anti-Spam Detection
+	 */
+	private static async executeEnhancedMessageBuffering(
+		redisManager: RedisManager,
+		executeFunctions: IExecuteFunctions,
+		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
+	) {
+		// Get parameters
+		const bufferTime = executeFunctions.getNodeParameter('bufferTime', params.itemIndex, 30) as number;
+		const bufferSize = executeFunctions.getNodeParameter('bufferSize', params.itemIndex, 100) as number;
+		const bufferPattern = executeFunctions.getNodeParameter('bufferPattern', params.itemIndex, 'collect_send') as string;
+		
+		// Anti-spam parameters
+		const antiSpamType = executeFunctions.getNodeParameter('antiSpamType', params.itemIndex, 'disabled') as string;
+		const spamAction = executeFunctions.getNodeParameter('spamAction', params.itemIndex, 'block') as string;
+		const similarityThreshold = executeFunctions.getNodeParameter('similarityThreshold', params.itemIndex, 80) as number;
+		const floodMaxMessages = executeFunctions.getNodeParameter('floodMaxMessages', params.itemIndex, 5) as number;
+		const floodTimeWindow = executeFunctions.getNodeParameter('floodTimeWindow', params.itemIndex, 30) as number;
+
+		// Configure MessageBuffer with anti-spam detection
+		const bufferConfig = {
+			pattern: bufferPattern as any,
+			maxSize: bufferSize,
+			flushInterval: bufferTime,
+			enableStreams: true,
+			keyPrefix: `${params.keyPrefix}_enhanced`,
+			enableAntiSpam: antiSpamType !== 'disabled',
+			spamDetectionConfig: {
+				detectionType: antiSpamType as any,
+				action: spamAction as any,
+				userId: params.sessionKey,
+				sessionId: params.sessionKey,
+				similarityThreshold,
+				detectionTimeWindow: 5, // minutes
+				floodMaxMessages,
+				floodTimeWindow,
+				keyPrefix: `${params.keyPrefix}_spam`
+			}
+		};
+
+		const messageBuffer = new MessageBuffer(redisManager, bufferConfig);
+
+		try {
+			// Add message to buffer
+			const result = await messageBuffer.addMessage(params.sessionKey, {
+				content: params.messageContent,
+				userId: params.sessionKey,
+				metadata: {
+					timestamp: Date.now(),
+					source: 'chatbot_enhanced'
+				}
+			});
+
+			if (params.debugMode) {
+				console.log(`Enhanced buffer result:`, {
+					bufferId: result.bufferId,
+					messageId: result.messageId,
+					shouldFlush: result.shouldFlush,
+					spamDetected: result.spamDetectionResult?.isSpam,
+					blocked: result.blocked
+				});
+			}
+
+			// Handle blocked messages
+			if (result.blocked) {
+				return {
+					success: {
+						type: 'success',
+						data: {
+							type: 'blocked',
+							status: 'spam_blocked',
+							message: 'Message blocked due to spam detection',
+							sessionId: params.sessionKey,
+							operationType: 'messageBuffering',
+							spamDetection: result.spamDetectionResult
+						},
+						timestamp: Date.now()
+					},
+					metrics: {
+						type: 'metrics',
+						data: {
+							operationType: 'messageBuffering',
+							metrics: {
+								spamBlocked: 1,
+								spamType: result.spamDetectionResult?.spamType,
+								confidence: result.spamDetectionResult?.confidence
+							},
+							performance: {
+								processingTime: 0,
+								redisHealth: redisManager.isAvailable()
+							}
+						},
+						timestamp: Date.now()
+					}
+				};
+			}
+
+			// Check if we should flush
+			if (result.shouldFlush) {
+				const flushResult = await messageBuffer.flush(params.sessionKey, 'size');
+				
+				return {
+					success: {
+						type: 'success',
+						data: {
+							type: 'batch_ready',
+							status: 'flushed',
+							messages: flushResult.flushedMessages.map(msg => msg.content),
+							totalMessages: flushResult.flushedMessages.length,
+							sessionId: params.sessionKey,
+							operationType: 'messageBuffering',
+							flushTrigger: flushResult.trigger,
+							spamStats: flushResult.spamStats
+						},
+						timestamp: Date.now()
+					},
+					processed: {
+						type: 'processed',
+						data: {
+							originalMessage: params.messageContent,
+							transformedMessage: flushResult.flushedMessages.map(msg => msg.content).join(' | '),
+							enrichmentData: {
+								buffered: true,
+								totalMessagesCollected: flushResult.flushedMessages.length,
+								bufferDuration: bufferTime,
+								flushType: flushResult.trigger,
+								spamDetected: flushResult.spamStats?.spamDetected || 0,
+								antiSpamEnabled: antiSpamType !== 'disabled'
+							}
+						},
+						timestamp: Date.now()
+					},
+					metrics: {
+						type: 'metrics',
+						data: {
+							operationType: 'messageBuffering',
+							metrics: {
+								totalMessagesBuffered: flushResult.flushedMessages.length,
+								bufferTime: bufferTime,
+								flushTrigger: flushResult.trigger,
+								processingTime: flushResult.processingTime,
+								spamStats: flushResult.spamStats
+							},
+							performance: {
+								processingTime: flushResult.processingTime,
+								bufferEfficiency: 100,
+								redisHealth: redisManager.isAvailable()
+							}
+						},
+						timestamp: Date.now()
+					}
+				};
+			} else {
+				// Message added to buffer, waiting for flush
+				return {
+					success: {
+						type: 'success',
+						data: {
+							type: 'buffered',
+							status: 'pending',
+							message: params.messageContent,
+							sessionId: params.sessionKey,
+							operationType: 'messageBuffering',
+							messageId: result.messageId,
+							spamDetection: result.spamDetectionResult
+						},
+						timestamp: Date.now()
+					},
+					processed: {
+						type: 'processed',
+						data: {
+							originalMessage: params.messageContent,
+							transformedMessage: params.messageContent,
+							enrichmentData: {
+								buffered: true,
+								messageId: result.messageId,
+								waitingForFlush: true,
+								spamDetected: result.spamDetectionResult?.isSpam || false,
+								antiSpamEnabled: antiSpamType !== 'disabled'
+							}
+						},
+						timestamp: Date.now()
+					},
+					metrics: {
+						type: 'metrics',
+						data: {
+							operationType: 'messageBuffering',
+							metrics: {
+								messageBuffered: 1,
+								spamDetected: result.spamDetectionResult?.isSpam ? 1 : 0,
+								spamType: result.spamDetectionResult?.spamType
+							},
+							performance: {
+								processingTime: 0,
+								redisHealth: redisManager.isAvailable()
+							}
+						},
+						timestamp: Date.now()
+					}
+				};
+			}
+		} catch (error) {
+			throw new NodeOperationError(
+				executeFunctions.getNode(),
+				`Enhanced message buffering failed: ${error.message}`
+			);
+		}
+	}
+
+	/**
+	 * Execute Legacy Message Buffering (Original Implementation)
+	 */
+	private static async executeLegacyMessageBuffering(
 		redisManager: RedisManager,
 		executeFunctions: IExecuteFunctions,
 		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }

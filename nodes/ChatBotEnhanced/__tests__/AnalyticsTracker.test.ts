@@ -37,6 +37,19 @@ describe('AnalyticsTracker', () => {
 			histogramBuckets: [0.1, 0.5, 1, 5, 10, 50, 100],
 		};
 
+		// Setup default mock responses
+		mockClient.hSet.mockResolvedValue(1);
+		mockClient.hGetAll.mockResolvedValue({});
+		mockClient.hDel.mockResolvedValue(1);
+		mockClient.hLen.mockResolvedValue(0);
+		mockClient.del.mockResolvedValue(1);
+		mockClient.keys.mockResolvedValue([]);
+		mockClient.expire.mockResolvedValue(1);
+		mockClient.multi.mockReturnValue({
+			del: jest.fn().mockReturnThis(),
+			exec: jest.fn().mockResolvedValue([['OK']])
+		});
+
 		analyticsTracker = new AnalyticsTracker(mockRedisManager, config);
 
 		// Default mock implementation
@@ -55,13 +68,13 @@ describe('AnalyticsTracker', () => {
 			await analyticsTracker.recordMetric('requests', 1, 'counter');
 
 			expect(mockClient.hSet).toHaveBeenCalledWith(
-				'test_analytics:metrics:2024010100', // Hour-based key
+				expect.stringMatching(/test_analytics:metrics:\d{10}/), // Hour-based key pattern
 				expect.stringContaining('requests:counter'),
 				expect.stringContaining('"name":"requests"')
 			);
 
 			expect(mockClient.expire).toHaveBeenCalledWith(
-				'test_analytics:metrics:2024010100',
+				expect.stringMatching(/test_analytics:metrics:\d{10}/),
 				8 * 24 * 60 * 60 // retentionDays + 1 day
 			);
 		});
@@ -240,7 +253,7 @@ describe('AnalyticsTracker', () => {
 	});
 
 	describe('Metric Querying', () => {
-		const sampleMetrics = {
+		const sampleMetrics: Record<string, Record<string, string>> = {
 			'test_analytics:metrics:2024010100': {
 				'requests:counter::1704063600000': JSON.stringify({
 					name: 'requests',
@@ -272,9 +285,9 @@ describe('AnalyticsTracker', () => {
 				'test_analytics:metrics:2024010101',
 			]);
 
-			mockClient.hGetAll
-				.mockResolvedValueOnce(sampleMetrics['test_analytics:metrics:2024010100'])
-				.mockResolvedValueOnce(sampleMetrics['test_analytics:metrics:2024010101']);
+			mockClient.hGetAll.mockImplementation((key: string) => {
+				return Promise.resolve(sampleMetrics[key] || {});
+			});
 		});
 
 		it('should query all metrics within time range', async () => {

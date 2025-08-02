@@ -1,5 +1,5 @@
 import { ChatBotEnhanced } from '../ChatBotEnhanced.node';
-import { NodeExecuteFunctions } from 'n8n-workflow';
+import type { IExecuteFunctions } from 'n8n-workflow';
 import { RedisManager } from '../managers/RedisManager';
 import { RateLimiter } from '../managers/RateLimiter';
 import { SessionManager } from '../managers/SessionManager';
@@ -19,7 +19,7 @@ jest.mock('../managers/AnalyticsTracker');
 
 describe('ChatBotEnhanced Node Integration', () => {
 	let node: ChatBotEnhanced;
-	let mockExecuteFunctions: Partial<NodeExecuteFunctions>;
+	let mockExecuteFunctions: Partial<IExecuteFunctions>;
 	let mockRedisManager: jest.Mocked<RedisManager>;
 	let mockRateLimiter: jest.Mocked<RateLimiter>;
 	let mockSessionManager: jest.Mocked<SessionManager>;
@@ -137,7 +137,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				ssl: false,
 			}),
 			getNodeParameter: jest.fn().mockImplementation((paramName: string) => {
-				const params = {
+				const params: Record<string, any> = {
 					operation: 'rate_limit',
 					rateLimitConfig: {
 						algorithm: 'sliding_window',
@@ -171,7 +171,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(mockRedisManager.connect).toHaveBeenCalled();
 			expect(mockRateLimiter.checkRateLimit).toHaveBeenCalledWith('user-123', 1);
@@ -209,7 +209,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return {};
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[0]).toEqual([]); // Success output empty
 			expect(result[2]).toEqual([
@@ -233,7 +233,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(mockSessionManager.getSession).toHaveBeenCalledWith('session-456');
 			expect(mockSessionManager.updateSession).toHaveBeenCalledWith(
@@ -262,7 +262,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(mockMessageBuffer.addMessage).toHaveBeenCalledWith(
 				'user-123',
@@ -289,7 +289,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(mockMessageRouter.routeMessage).toHaveBeenCalledWith({
 				content: 'Hello, world!',
@@ -316,7 +316,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(mockUserStorage.store).toHaveBeenCalledWith(
 				'user-123',
@@ -341,7 +341,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return {};
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			// Should have executed rate limiting
 			expect(mockRateLimiter.checkRateLimit).toHaveBeenCalled();
@@ -361,7 +361,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[2][0].json).toMatchObject({
 				error: 'Redis connection failed',
@@ -374,7 +374,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[2][0].json).toMatchObject({
 				error: 'Rate limiter error',
@@ -389,7 +389,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			// Should handle gracefully and not crash
 			expect(Array.isArray(result)).toBe(true);
@@ -403,7 +403,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[2][0].json).toMatchObject({
 				error: 'Credentials not found',
@@ -419,7 +419,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return {};
 			});
 
-			await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(mockAnalyticsTracker.recordPerformance).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -444,7 +444,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return {};
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[3]).toHaveLength(1); // Metrics output
 			expect(result[3][0].json).toMatchObject({
@@ -463,7 +463,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 		it('should route successful operations to success output', async () => {
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[0]).toHaveLength(1); // Success output
 			expect(result[1]).toHaveLength(0); // Processed output
@@ -473,7 +473,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 		it('should route processed operations to processed output', async () => {
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('buffer_message');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[0]).toHaveLength(0); // Success output
 			expect(result[1]).toHaveLength(1); // Processed output
@@ -484,7 +484,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 			mockRedisManager.connect.mockRejectedValueOnce(new Error('Connection failed'));
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[0]).toHaveLength(0); // Success output
 			expect(result[1]).toHaveLength(0); // Processed output
@@ -497,7 +497,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return 'rate_limit';
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			expect(result[3]).toHaveLength(1); // Metrics output
 		});
@@ -507,7 +507,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 		it('should cleanup Redis connections after execution', async () => {
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
-			await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			// Note: In real implementation, cleanup might be handled differently
 			// This test ensures the structure is in place for proper cleanup
@@ -519,7 +519,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
 			// Should not throw during execution
-			await expect(node.execute.call(mockExecuteFunctions as NodeExecuteFunctions))
+			await expect(node.execute.call(mockExecuteFunctions as IExecuteFunctions))
 				.resolves.toBeDefined();
 		});
 	});
@@ -537,7 +537,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			// Should handle invalid configuration gracefully
 			expect(Array.isArray(result)).toBe(true);
@@ -553,7 +553,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 				return undefined;
 			});
 
-			const result = await node.execute.call(mockExecuteFunctions as NodeExecuteFunctions);
+			const result = await node.execute.call(mockExecuteFunctions as IExecuteFunctions);
 
 			// Should handle invalid configuration gracefully
 			expect(Array.isArray(result)).toBe(true);
@@ -565,7 +565,7 @@ describe('ChatBotEnhanced Node Integration', () => {
 			mockExecuteFunctions.getNodeParameter = jest.fn().mockReturnValue('rate_limit');
 
 			const executions = Array.from({ length: 5 }, () =>
-				node.execute.call(mockExecuteFunctions as NodeExecuteFunctions)
+				node.execute.call(mockExecuteFunctions as IExecuteFunctions)
 			);
 
 			const results = await Promise.all(executions);

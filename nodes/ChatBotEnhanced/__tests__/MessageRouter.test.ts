@@ -1,4 +1,4 @@
-import { MessageRouter, RouterConfig, RoutingRule, MessageRoute } from '../managers/MessageRouter';
+import { MessageRouter, RouterConfig, RoutingRule } from '../managers/MessageRouter';
 import { RedisManager } from '../managers/RedisManager';
 import { NodeOperationError } from 'n8n-workflow';
 
@@ -344,7 +344,7 @@ describe('MessageRouter', () => {
 			const callback = jest.fn();
 			let subscriptionCallback: any;
 
-			mockSubscriber.subscribe.mockImplementation((channel, cb) => {
+			mockSubscriber.subscribe.mockImplementation((channel: string, cb: any) => {
 				subscriptionCallback = cb;
 				return Promise.resolve();
 			});

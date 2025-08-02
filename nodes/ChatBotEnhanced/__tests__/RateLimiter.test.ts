@@ -1,4 +1,5 @@
-import { RateLimiter, RateLimitConfig, RateLimitResult } from '../managers/RateLimiter';
+import { RateLimiter, RateLimitConfig } from '../managers/RateLimiter';
+import type { RateLimitResult } from '../managers/RateLimiter';
 import { RedisManager } from '../managers/RedisManager';
 import { NodeOperationError } from 'n8n-workflow';
 
@@ -544,7 +545,6 @@ describe('RateLimiter', () => {
 	describe('Key Generation', () => {
 		it('should generate unique keys for different strategies', () => {
 			const strategies = ['per_user', 'per_ip', 'per_session', 'global'];
-			const keys = new Set();
 
 			strategies.forEach(strategy => {
 				const limiter = new RateLimiter(mockRedisManager, {

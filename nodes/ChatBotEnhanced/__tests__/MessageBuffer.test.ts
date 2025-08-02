@@ -1,4 +1,4 @@
-import { MessageBuffer, BufferConfig, BufferedMessage, BufferState, FlushResult } from '../managers/MessageBuffer';
+import { MessageBuffer, BufferConfig, BufferedMessage, BufferState } from '../managers/MessageBuffer';
 import { RedisManager } from '../managers/RedisManager';
 
 // Mock RedisManager
@@ -375,7 +375,12 @@ describe('MessageBuffer', () => {
 			const bufferState: BufferState = {
 				bufferId,
 				pattern: 'collect_send',
-				messages: [sampleMessages[0]],
+				messages: [{
+					id: 'msg-1',
+					content: 'Test message',
+					timestamp: Date.now() - 3000,
+					priority: 0,
+				}],
 				totalMessages: 1,
 				lastFlush: Date.now() - 60000,
 				nextFlush: Date.now() + 30000,

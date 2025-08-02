@@ -1,5 +1,6 @@
 // Removed unused imports
 import { RedisManager } from './RedisManager';
+import { SpamDetector, SpamDetectionConfig, SpamDetectionResult } from './SpamDetector';
 
 export type BufferPattern = 'collect_send' | 'throttle' | 'batch' | 'priority';
 export type FlushTrigger = 'time' | 'size' | 'manual' | 'priority';
@@ -14,6 +15,10 @@ export interface BufferConfig {
 	keyPrefix?: string;
 	enableCompression?: boolean;
 	retentionTime?: number; // in seconds
+	
+	// Anti-spam detection configuration
+	enableAntiSpam?: boolean;
+	spamDetectionConfig?: Partial<SpamDetectionConfig>;
 }
 
 export interface BufferedMessage {
@@ -25,6 +30,11 @@ export interface BufferedMessage {
 	retryCount?: number;
 	userId?: string;
 	channelId?: string;
+	
+	// Anti-spam related fields
+	spamDetectionResult?: SpamDetectionResult;
+	isSpam?: boolean;
+	additionalDelay?: number; // Extra delay for suspected spam
 }
 
 export interface BufferState {
@@ -44,6 +54,15 @@ export interface FlushResult {
 	trigger: FlushTrigger;
 	flushTime: number;
 	processingTime: number;
+	
+	// Anti-spam statistics
+	spamStats?: {
+		totalMessages: number;
+		spamDetected: number;
+		blockedMessages: number;
+		delayedMessages: number;
+		markedMessages: number;
+	};
 }
 
 export interface BufferStats {
@@ -62,6 +81,7 @@ export class MessageBuffer {
 	private keyPrefix: string;
 	private flushTimers: Map<string, NodeJS.Timeout> = new Map();
 	private cancellationTokens: Map<string, boolean> = new Map();
+	private spamDetector?: SpamDetector;
 
 	constructor(redisManager: RedisManager, config: Partial<BufferConfig> = {}) {
 		this.redisManager = redisManager;
@@ -75,26 +95,76 @@ export class MessageBuffer {
 			keyPrefix: 'buffer',
 			enableCompression: false,
 			retentionTime: 3600, // 1 hour
+			enableAntiSpam: false,
 			...config,
 		};
 		this.keyPrefix = this.config.keyPrefix!;
+
+		// Initialize spam detector if anti-spam is enabled
+		if (this.config.enableAntiSpam && this.config.spamDetectionConfig) {
+			const spamConfig: SpamDetectionConfig = {
+				detectionType: 'disabled',
+				action: 'block',
+				userId: 'default',
+				sessionId: 'default',
+				keyPrefix: `${this.keyPrefix}_spam`,
+				...this.config.spamDetectionConfig
+			};
+			this.spamDetector = new SpamDetector(this.redisManager, spamConfig);
+		}
 	}
 
 	/**
-	 * Add message to buffer
+	 * Add message to buffer with anti-spam detection
 	 */
 	async addMessage(
 		bufferId: string,
 		message: Omit<BufferedMessage, 'id' | 'timestamp'>
-	): Promise<{ bufferId: string; messageId: string; shouldFlush: boolean }> {
+	): Promise<{ 
+		bufferId: string; 
+		messageId: string; 
+		shouldFlush: boolean; 
+		spamDetectionResult?: SpamDetectionResult;
+		blocked?: boolean;
+	}> {
 		const messageId = this.generateMessageId();
 		const timestamp = Date.now();
+
+		// Perform spam detection if enabled
+		let spamDetectionResult: SpamDetectionResult | undefined;
+
+		if (this.spamDetector && message.content) {
+			// Update spam detector config with current user/session context
+			if (message.userId || message.channelId) {
+				this.spamDetector.updateConfig({
+					userId: message.userId || 'unknown',
+					sessionId: bufferId // Use bufferId as sessionId for consistency
+				});
+			}
+
+			spamDetectionResult = await this.spamDetector.detectSpam(message.content);
+			
+			// Handle spam detection result
+			if (spamDetectionResult.isSpam && spamDetectionResult.actionTaken === 'blocked') {
+				// Return early - don't add blocked messages to buffer
+				return {
+					bufferId,
+					messageId,
+					shouldFlush: false,
+					spamDetectionResult,
+					blocked: true
+				};
+			}
+		}
 
 		const bufferedMessage: BufferedMessage = {
 			id: messageId,
 			timestamp,
 			retryCount: 0,
 			...message,
+			spamDetectionResult,
+			isSpam: spamDetectionResult?.isSpam || false,
+			additionalDelay: spamDetectionResult?.additionalDelay || 0
 		};
 
 		return this.redisManager.executeOperation(async (client) => {
@@ -120,17 +190,30 @@ export class MessageBuffer {
 			// Store updated buffer state
 			await this.storeBufferState(client, bufferId, bufferState);
 
+			// Apply additional delay for spam messages
+			const baseDelay = shouldFlush ? 0 : (bufferState.nextFlush - timestamp);
+			const totalDelay = baseDelay + (bufferedMessage.additionalDelay || 0) * 1000;
+
 			// Schedule flush if needed
 			if (shouldFlush) {
-				await this.scheduleFlush(bufferId, 'size');
+				if (bufferedMessage.additionalDelay) {
+					// Delay the flush for spam messages
+					setTimeout(() => {
+						this.scheduleFlush(bufferId, 'size');
+					}, bufferedMessage.additionalDelay * 1000);
+				} else {
+					await this.scheduleFlush(bufferId, 'size');
+				}
 			} else {
-				this.ensureTimerScheduled(bufferId, bufferState.nextFlush);
+				this.ensureTimerScheduled(bufferId, timestamp + totalDelay);
 			}
 
 			return {
 				bufferId,
 				messageId,
 				shouldFlush,
+				spamDetectionResult,
+				blocked: false
 			};
 		});
 	}
@@ -177,12 +260,16 @@ export class MessageBuffer {
 
 			const processingTime = Date.now() - startTime;
 
+			// Calculate spam statistics if anti-spam is enabled
+			const spamStats = this.calculateSpamStats(flushedMessages, remainingMessages);
+
 			return {
 				flushedMessages,
 				remainingMessages,
 				trigger,
 				flushTime: startTime,
 				processingTime,
+				spamStats
 			};
 		});
 	}
@@ -610,9 +697,95 @@ export class MessageBuffer {
 	}
 
 	/**
+	 * Calculate spam statistics from messages
+	 */
+	private calculateSpamStats(
+		flushedMessages: BufferedMessage[], 
+		remainingMessages: BufferedMessage[]
+	): { 
+		totalMessages: number;
+		spamDetected: number;
+		blockedMessages: number;
+		delayedMessages: number;
+		markedMessages: number;
+	} {
+		const allMessages = [...flushedMessages, ...remainingMessages];
+		
+		let spamDetected = 0;
+		let blockedMessages = 0;
+		let delayedMessages = 0;
+		let markedMessages = 0;
+
+		for (const message of allMessages) {
+			if (message.isSpam && message.spamDetectionResult) {
+				spamDetected++;
+				
+				switch (message.spamDetectionResult.actionTaken) {
+					case 'blocked':
+						blockedMessages++;
+						break;
+					case 'delayed':
+						delayedMessages++;
+						break;
+					case 'marked':
+						markedMessages++;
+						break;
+				}
+			}
+		}
+
+		return {
+			totalMessages: allMessages.length,
+			spamDetected,
+			blockedMessages,
+			delayedMessages,
+			markedMessages
+		};
+	}
+
+	/**
+	 * Get spam detector instance for external access
+	 */
+	getSpamDetector(): SpamDetector | undefined {
+		return this.spamDetector;
+	}
+
+	/**
+	 * Enable or disable anti-spam detection
+	 */
+	setAntiSpamEnabled(enabled: boolean, spamConfig?: Partial<SpamDetectionConfig>): void {
+		this.config.enableAntiSpam = enabled;
+		
+		if (enabled && spamConfig) {
+			this.config.spamDetectionConfig = { ...this.config.spamDetectionConfig, ...spamConfig };
+			
+			if (!this.spamDetector) {
+				const fullSpamConfig: SpamDetectionConfig = {
+					detectionType: 'disabled',
+					action: 'block',
+					userId: 'default',
+					sessionId: 'default',
+					keyPrefix: `${this.keyPrefix}_spam`,
+					...this.config.spamDetectionConfig
+				};
+				this.spamDetector = new SpamDetector(this.redisManager, fullSpamConfig);
+			} else {
+				this.spamDetector.updateConfig(this.config.spamDetectionConfig);
+			}
+		} else if (!enabled) {
+			this.spamDetector = undefined;
+		}
+	}
+
+	/**
 	 * Update configuration
 	 */
 	updateConfig(newConfig: Partial<BufferConfig>): void {
 		this.config = { ...this.config, ...newConfig };
+		
+		// Update spam detector if anti-spam config changed
+		if (this.spamDetector && newConfig.spamDetectionConfig) {
+			this.spamDetector.updateConfig(newConfig.spamDetectionConfig);
+		}
 	}
 }
