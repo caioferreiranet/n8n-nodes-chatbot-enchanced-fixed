@@ -54,7 +54,7 @@ module.exports = {
 			plugins: ['eslint-plugin-n8n-nodes-base'],
 			extends: ['plugin:n8n-nodes-base/nodes'],
 			rules: {
-				'n8n-nodes-base/node-class-description-credentials-name-unsuffixed': 'error',
+				'n8n-nodes-base/node-class-description-credentials-name-unsuffixed': 'off',
 				'n8n-nodes-base/node-class-description-display-name-unsuffixed-trigger-node': 'error',
 				'n8n-nodes-base/node-class-description-empty-string': 'error',
 				'n8n-nodes-base/node-class-description-icon-not-svg': 'error',
