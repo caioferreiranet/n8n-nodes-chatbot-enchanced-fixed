@@ -517,7 +517,10 @@ export class ChatBotEnhanced implements INodeType {
 					const testValue = await client.get(testKey);
 					
 					if (testValue !== 'test') {
-						throw new Error('Redis read/write test failed');
+						return {
+							status: 'Error',
+							message: 'Redis read/write test failed',
+						};
 					}
 					
 					// Clean up test key
