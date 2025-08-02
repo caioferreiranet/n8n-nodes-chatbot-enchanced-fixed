@@ -41,6 +41,9 @@
     "n8nNodesApiVersion": 1,
     "nodes": [
       "dist/nodes/ChatBotEnhanced/ChatBotEnhanced.node.js"
+    ],
+    "credentials": [
+      "dist/credentials/RedisApi.credentials.js"
     ]
   },
   "devDependencies": {
