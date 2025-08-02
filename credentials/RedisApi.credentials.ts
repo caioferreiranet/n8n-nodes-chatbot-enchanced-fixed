@@ -205,7 +205,4 @@ export class RedisApi implements ICredentialType {
 			],
 		},
 	];
-
-	// Note: Redis credentials are tested within the node itself using Redis client
-	// No HTTP-based credential test is appropriate for Redis connections
 }
