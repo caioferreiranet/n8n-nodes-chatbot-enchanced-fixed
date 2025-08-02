@@ -1,5 +1,8 @@
 import type {
+	ICredentialTestFunctions,
+	ICredentialsDecrypted,
 	IExecuteFunctions,
+	INodeCredentialTestResult,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
@@ -37,6 +40,7 @@ export class ChatBotEnhanced implements INodeType {
 			{
 				name: 'redisApi',
 				required: true,
+				testedBy: 'redisConnectionTest',
 			},
 		],
 		properties: [
@@ -491,6 +495,47 @@ export class ChatBotEnhanced implements INodeType {
 				description: 'Prefix for Redis keys to avoid collisions',
 			},
 		],
+	};
+
+	methods = {
+		credentialTest: {
+			async redisConnectionTest(
+				this: ICredentialTestFunctions,
+				credential: ICredentialsDecrypted,
+			): Promise<INodeCredentialTestResult> {
+				const credentials = credential.data as unknown as RedisCredential;
+				
+				try {
+					const redisManager = new RedisManager(credentials);
+					await redisManager.connect();
+					
+					// Test basic Redis operation using the client directly
+					const client = redisManager.getClient();
+					const testKey = 'n8n:credential:test';
+					
+					await client.set(testKey, 'test', { EX: 5 }); // 5 second expiry
+					const testValue = await client.get(testKey);
+					
+					if (testValue !== 'test') {
+						throw new Error('Redis read/write test failed');
+					}
+					
+					// Clean up test key
+					await client.del(testKey);
+					await redisManager.cleanup();
+
+					return {
+						status: 'OK',
+						message: 'Redis connection successful!',
+					};
+				} catch (error) {
+					return {
+						status: 'Error',
+						message: `Redis connection failed: ${(error as Error).message}`,
+					};
+				}
+			},
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {

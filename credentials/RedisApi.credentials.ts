@@ -1,6 +1,5 @@
 import type {
 	IAuthenticateGeneric,
-	ICredentialTestRequest,
 	ICredentialType,
 	INodeProperties,
 } from 'n8n-workflow';
@@ -290,13 +289,5 @@ export class RedisApi implements ICredentialType {
 	authenticate: IAuthenticateGeneric = {
 		type: 'generic',
 		properties: {},
-	};
-
-	test: ICredentialTestRequest = {
-		request: {
-			baseURL: '={{$credentials.connectionType === "standard" ? "redis://" + $credentials.host + ":" + $credentials.port : ""}}',
-			url: '',
-			method: 'GET',
-		},
 	};
 }
