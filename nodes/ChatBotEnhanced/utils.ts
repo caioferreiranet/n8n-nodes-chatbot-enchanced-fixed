@@ -9,36 +9,94 @@ export function setupRedisClient(credentials: RedisCredential) {
 	
 	switch (credentials.connectionType) {
 		case 'standard':
-			client = createClient({
-				socket: {
+			// Create different socket configurations for TLS vs non-TLS
+			if (credentials.ssl === true) {
+				// TLS configuration
+				const tlsSocketOptions: any = {
+					tls: true,
 					host: credentials.host || 'localhost',
 					port: credentials.port || 6379,
-					tls: credentials.ssl,
-					connectTimeout: credentials.connectionOptions?.connectTimeout || 10000,
-					commandTimeout: credentials.connectionOptions?.commandTimeout || 5000,
-					keepAlive: credentials.connectionOptions?.keepAlive !== false,
-				},
-				database: credentials.database || 0,
-				username: credentials.authType === 'userpass' ? credentials.username : undefined,
-				password: credentials.authType !== 'none' ? credentials.password : undefined,
-			});
+				};
+
+				// Add SSL options if provided
+				if (credentials.sslOptions) {
+					if (credentials.sslOptions.rejectUnauthorized !== undefined) {
+						tlsSocketOptions.rejectUnauthorized = credentials.sslOptions.rejectUnauthorized;
+					}
+					if (credentials.sslOptions.ca) {
+						tlsSocketOptions.ca = credentials.sslOptions.ca;
+					}
+					if (credentials.sslOptions.cert) {
+						tlsSocketOptions.cert = credentials.sslOptions.cert;
+					}
+					if (credentials.sslOptions.key) {
+						tlsSocketOptions.key = credentials.sslOptions.key;
+					}
+				}
+
+				// Add connection timeout options if provided
+				if (credentials.connectionOptions) {
+					if (credentials.connectionOptions.connectTimeout) {
+						tlsSocketOptions.connectTimeout = credentials.connectionOptions.connectTimeout;
+					}
+					if (credentials.connectionOptions.commandTimeout) {
+						tlsSocketOptions.commandTimeout = credentials.connectionOptions.commandTimeout;
+					}
+					if (credentials.connectionOptions.keepAlive !== undefined) {
+						tlsSocketOptions.keepAlive = credentials.connectionOptions.keepAlive;
+					}
+				}
+
+				client = createClient({
+					socket: tlsSocketOptions,
+					database: credentials.database || 0,
+					username: credentials.authType === 'userpass' ? credentials.username : undefined,
+					password: credentials.authType !== 'none' ? credentials.password : undefined,
+				});
+			} else {
+				// Non-TLS configuration
+				const socketOptions: any = {
+					host: credentials.host || 'localhost',
+					port: credentials.port || 6379,
+				};
+
+				// Add connection timeout options if provided
+				if (credentials.connectionOptions) {
+					if (credentials.connectionOptions.connectTimeout) {
+						socketOptions.connectTimeout = credentials.connectionOptions.connectTimeout;
+					}
+					if (credentials.connectionOptions.commandTimeout) {
+						socketOptions.commandTimeout = credentials.connectionOptions.commandTimeout;
+					}
+					if (credentials.connectionOptions.keepAlive !== undefined) {
+						socketOptions.keepAlive = credentials.connectionOptions.keepAlive;
+					}
+				}
+
+				client = createClient({
+					socket: socketOptions,
+					database: credentials.database || 0,
+					username: credentials.authType === 'userpass' ? credentials.username : undefined,
+					password: credentials.authType !== 'none' ? credentials.password : undefined,
+				});
+			}
 			break;
 		
 		case 'cluster':
 			// Cluster configuration for future implementation
-			const clusterHosts = credentials.clusterHosts?.split(',').map(host => {
-				const [hostname, port] = host.trim().split(':');
-				return { host: hostname, port: parseInt(port) || 6379 };
-			}) || [];
+			// const clusterHosts = credentials.clusterHosts?.split(',').map(host => {
+			// 	const [hostname, port] = host.trim().split(':');
+			// 	return { host: hostname, port: parseInt(port) || 6379 };
+			// }) || [];
 			
 			throw new Error('Cluster mode not yet implemented. Will be available in Phase 3.');
 			
 		case 'sentinel':
 			// Sentinel configuration for future implementation
-			const sentinelHosts = credentials.sentinelHosts?.split(',').map(host => {
-				const [hostname, port] = host.trim().split(':');
-				return { host: hostname, port: parseInt(port) || 26379 };
-			}) || [];
+			// const sentinelHosts = credentials.sentinelHosts?.split(',').map(host => {
+			// 	const [hostname, port] = host.trim().split(':');
+			// 	return { host: hostname, port: parseInt(port) || 26379 };
+			// }) || [];
 			
 			throw new Error('Sentinel mode not yet implemented. Will be available in Phase 3.');
 			

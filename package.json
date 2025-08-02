@@ -12,7 +12,7 @@
     "session-management"
   ],
   "license": "MIT",
-  "homepage": "https://trigidigital.com/tutorial/",
+  "homepage": "https://trigidigital.com",
   "author": {
     "name": "TrigiDigital",
     "email": "admin@trigidigital.com"
@@ -54,6 +54,7 @@
     "gulp": "^5.0.0",
     "jest": "^29.0.0",
     "prettier": "^3.5.3",
+    "rimraf": "^5.0.5",
     "ts-jest": "^29.2.5",
     "typescript": "^5.8.2"
   },
@@ -61,7 +62,6 @@
     "n8n-workflow": "*"
   },
   "dependencies": {
-    "redis": "^5.6.1",
-    "ioredis": "^5.3.0"
+    "redis": "^5.6.1"
   }
 }

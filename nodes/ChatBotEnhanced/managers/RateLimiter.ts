@@ -50,12 +50,12 @@ export class RateLimiter {
 	constructor(redisManager: RedisManager, config: RateLimitConfig) {
 		this.redisManager = redisManager;
 		this.config = {
-			algorithm: 'sliding_window',
-			strategy: 'per_user',
 			keyPrefix: 'rate_limit',
 			...config,
+			algorithm: config.algorithm || 'sliding_window',
+			strategy: config.strategy || 'per_user',
 		};
-		this.keyPrefix = this.config.keyPrefix || 'rate_limit';
+		this.keyPrefix = this.config.keyPrefix!;
 	}
 
 	/**
@@ -164,6 +164,7 @@ export class RateLimiter {
 		const now = Date.now();
 		const windowMs = this.config.windowSize * 1000;
 		const windowStart = now - windowMs;
+		const requestId = `${now}-${Math.random()}`;
 
 		// Use Redis pipeline for atomic operations
 		const pipeline = client.multi();
@@ -175,7 +176,7 @@ export class RateLimiter {
 		pipeline.zCard(key);
 		
 		// Add current request timestamp
-		pipeline.zAdd(key, { score: now, value: `${now}-${Math.random()}` });
+		pipeline.zAdd(key, { score: now, value: requestId });
 		
 		// Set TTL for the key
 		pipeline.expire(key, Math.ceil(windowMs / 1000) * 2);
@@ -194,7 +195,7 @@ export class RateLimiter {
 
 		// If not allowed, remove the request we just added
 		if (!allowed) {
-			await client.zRem(key, `${now}-${Math.random()}`);
+			await client.zRem(key, requestId);
 		}
 
 		// Calculate reset time (when oldest request expires)

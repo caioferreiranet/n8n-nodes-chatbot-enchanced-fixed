@@ -77,7 +77,7 @@ export class SessionManager {
 			keyPrefix: 'session',
 			...config,
 		};
-		this.keyPrefix = this.config.keyPrefix || 'session';
+		this.keyPrefix = this.config.keyPrefix!;
 
 		if (this.config.enableCleanup) {
 			this.startCleanupScheduler();
@@ -399,7 +399,7 @@ export class SessionManager {
 
 			// Remove expired sessions from index
 			if (expiredSessions.length > 0) {
-				await client.zRem(indexKey, ...expiredSessions);
+				await client.zRem(indexKey, expiredSessions);
 			}
 
 			return cleanedCount;
@@ -446,7 +446,7 @@ export class SessionManager {
 			}
 
 			// Delete all session keys
-			await client.del(...keys);
+			await client.del(keys);
 			
 			// Clear session index
 			await client.del(this.getSessionIndexKey());
@@ -520,8 +520,7 @@ export class SessionManager {
 		} catch (error) {
 			throw new NodeOperationError(
 				null as any,
-				'Failed to serialize session data',
-				{ cause: error }
+				`Failed to serialize session data: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
 	}
@@ -535,8 +534,7 @@ export class SessionManager {
 		} catch (error) {
 			throw new NodeOperationError(
 				null as any,
-				'Failed to deserialize session data',
-				{ cause: error }
+				`Failed to deserialize session data: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
 	}

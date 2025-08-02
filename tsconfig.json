@@ -30,8 +30,9 @@
 	"exclude": [
 		"**/*.test.ts",
 		"**/__tests__/**",
-		"**/managers/**",
-		"**/templates/**",
-		"**/utils.ts"
+		"test-compile.ts",
+		"type-check.ts",
+		"compile-check.js",
+		"validate-typescript.js"
 	],
 }

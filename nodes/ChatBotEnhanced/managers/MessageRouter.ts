@@ -1,4 +1,4 @@
-import { RedisClientType } from 'redis';
+// Removed unused import
 import { NodeOperationError } from 'n8n-workflow';
 import { RedisManager } from './RedisManager';
 
@@ -66,7 +66,7 @@ export class MessageRouter {
 			retryDelay: 1000,
 			...config,
 		};
-		this.keyPrefix = this.config.keyPrefix || 'router';
+		this.keyPrefix = this.config.keyPrefix!;
 	}
 
 	/**
@@ -112,8 +112,7 @@ export class MessageRouter {
 		} catch (error) {
 			throw new NodeOperationError(
 				null as any,
-				`Message routing failed: ${error.message}`,
-				{ cause: error }
+				`Message routing failed: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
 		}
 	}
@@ -477,13 +476,14 @@ export class MessageRouter {
 			}
 
 			// Update failure stats
-			if (results.failed.length > 0) {
-				pipeline.hIncrBy(statsKey, 'failures', results.failed.length);
+			const failedCount = results.failed?.length || 0;
+			if (failedCount > 0) {
+				pipeline.hIncrBy(statsKey, 'failures', failedCount);
 			}
 
 			// Update processing time stats
-			const processingTime = Date.now() - route.timestamp;
-			pipeline.hIncrBy(statsKey, 'processing_time', processingTime);
+			const processingTime = Math.max(0, Date.now() - route.timestamp);
+			pipeline.hIncrBy(statsKey, 'processing_time', Math.floor(processingTime));
 
 			await pipeline.exec();
 		});

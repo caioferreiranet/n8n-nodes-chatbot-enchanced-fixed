@@ -1,5 +1,4 @@
-import { RedisClientType } from 'redis';
-import { NodeOperationError } from 'n8n-workflow';
+// Removed unused imports
 import { RedisManager } from './RedisManager';
 
 export type MetricType = 'counter' | 'gauge' | 'histogram' | 'timer';
@@ -81,7 +80,7 @@ export class AnalyticsTracker {
 			histogramBuckets: [0.1, 0.5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500, 1000],
 			...config,
 		};
-		this.keyPrefix = this.config.keyPrefix || 'analytics';
+		this.keyPrefix = this.config.keyPrefix!;
 
 		if (this.config.enableRealTimeMetrics) {
 			this.startBatchProcessor();
@@ -216,7 +215,7 @@ export class AnalyticsTracker {
 				const metricsKey = `${this.keyPrefix}:metrics:${timeKey}`;
 				const metrics = await client.hGetAll(metricsKey);
 				
-				for (const [metricKey, metricData] of Object.entries(metrics)) {
+				for (const [, metricData] of Object.entries(metrics)) {
 					try {
 						const metric: Metric = JSON.parse(metricData);
 						
@@ -359,7 +358,7 @@ export class AnalyticsTracker {
 					}
 
 					if (keysToDelete.length > 0) {
-						await client.hDel(key, ...keysToDelete);
+						await client.hDel(key, keysToDelete);
 						deletedCount += keysToDelete.length;
 					}
 

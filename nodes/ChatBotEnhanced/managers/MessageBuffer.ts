@@ -1,5 +1,4 @@
-import { RedisClientType } from 'redis';
-import { NodeOperationError } from 'n8n-workflow';
+// Removed unused imports
 import { RedisManager } from './RedisManager';
 
 export type BufferPattern = 'collect_send' | 'throttle' | 'batch' | 'priority';
@@ -56,11 +55,6 @@ export interface BufferStats {
 	flushesLast24h: number;
 }
 
-export interface StreamMessage {
-	id: string;
-	fields: Record<string, string>;
-	timestamp: number;
-}
 
 export class MessageBuffer {
 	private redisManager: RedisManager;
@@ -83,7 +77,7 @@ export class MessageBuffer {
 			retentionTime: 3600, // 1 hour
 			...config,
 		};
-		this.keyPrefix = this.config.keyPrefix || 'buffer';
+		this.keyPrefix = this.config.keyPrefix!;
 	}
 
 	/**
@@ -113,6 +107,9 @@ export class MessageBuffer {
 
 			// Update buffer state
 			const bufferState = await this.getOrCreateBufferState(client, bufferId);
+			if (!bufferState.messages) {
+				bufferState.messages = [];
+			}
 			bufferState.messages.push(bufferedMessage);
 			bufferState.totalMessages++;
 			bufferState.size = this.calculateBufferSize(bufferState.messages);
@@ -265,7 +262,7 @@ export class MessageBuffer {
 				const flushStreamKey = `${this.keyPrefix}:flushes`;
 				
 				try {
-					const flushes = await client.xRange(flushStreamKey, yesterday, '+');
+					const flushes = await client.xRange(flushStreamKey, yesterday.toString(), '+');
 					flushesLast24h = flushes.length;
 				} catch (error) {
 					// Stream might not exist yet
@@ -302,7 +299,7 @@ export class MessageBuffer {
 	 * Add message to Redis Stream
 	 */
 	private async addToStream(
-		client: RedisClientType,
+		client: any,
 		bufferId: string,
 		message: BufferedMessage
 	): Promise<void> {
@@ -322,8 +319,8 @@ export class MessageBuffer {
 		await client.xAdd(streamKey, '*', fields);
 
 		// Trim stream if it gets too long
-		if (this.config.streamMaxLength) {
-			await client.xTrim(streamKey, 'MAXLEN', '~', this.config.streamMaxLength);
+		if (this.config.streamMaxLength && this.config.streamMaxLength > 0) {
+			await client.xTrim(streamKey, 'MAXLEN', Math.floor(this.config.streamMaxLength));
 		}
 	}
 
@@ -331,7 +328,7 @@ export class MessageBuffer {
 	 * Get or create buffer state
 	 */
 	private async getOrCreateBufferState(
-		client: RedisClientType,
+		client: any,
 		bufferId: string
 	): Promise<BufferState> {
 		const existing = await this.getBufferState(client, bufferId);
@@ -357,7 +354,7 @@ export class MessageBuffer {
 	 * Get buffer state from Redis
 	 */
 	private async getBufferState(
-		client: RedisClientType,
+		client: any,
 		bufferId: string
 	): Promise<BufferState | null> {
 		const key = this.generateBufferKey(bufferId);
@@ -379,7 +376,7 @@ export class MessageBuffer {
 	 * Store buffer state to Redis
 	 */
 	private async storeBufferState(
-		client: RedisClientType,
+		client: any,
 		bufferId: string,
 		state: BufferState
 	): Promise<void> {
@@ -539,7 +536,7 @@ export class MessageBuffer {
 	 * Log flush event to stream
 	 */
 	private async logFlushToStream(
-		client: RedisClientType,
+		client: any,
 		bufferId: string,
 		flushedMessages: BufferedMessage[],
 		trigger: FlushTrigger
@@ -556,7 +553,7 @@ export class MessageBuffer {
 		await client.xAdd(flushStreamKey, '*', fields);
 
 		// Trim flush log stream
-		await client.xTrim(flushStreamKey, 'MAXLEN', '~', 1000);
+		await client.xTrim(flushStreamKey, 'MAXLEN', 1000);
 	}
 
 	/**
@@ -594,7 +591,7 @@ export class MessageBuffer {
 	 */
 	cleanup(): void {
 		// Clear all timers
-		for (const [bufferId, timer] of this.flushTimers) {
+		for (const [, timer] of this.flushTimers) {
 			clearTimeout(timer);
 		}
 		this.flushTimers.clear();

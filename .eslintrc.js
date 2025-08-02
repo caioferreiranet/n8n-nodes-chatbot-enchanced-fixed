@@ -18,7 +18,7 @@ module.exports = {
 		extraFileExtensions: ['.json'],
 	},
 
-	ignorePatterns: ['.eslintrc.js', '**/*.js', '**/node_modules/**', '**/dist/**', '**/managers/**', '**/templates/**', '**/__tests__/**', '**/utils.ts'],
+	ignorePatterns: ['.eslintrc.js', '**/*.js', '**/node_modules/**', '**/dist/**', '**/__tests__/**', 'validate-typescript.js', 'test-compile.js'],
 
 	overrides: [
 		{

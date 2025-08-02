@@ -56,7 +56,7 @@ export class UserStorage {
 			enableIndexing: true,
 			...config,
 		};
-		this.keyPrefix = this.config.keyPrefix || 'storage';
+		this.keyPrefix = this.config.keyPrefix!;
 	}
 
 	/**
@@ -443,7 +443,7 @@ export class UserStorage {
 				// Clear existing list and add new items
 				await client.del(listKey);
 				if (listData.length > 0) {
-					await client.lPush(listKey, ...listData.map(item => JSON.stringify(item)));
+					await client.lPush(listKey, listData.map(item => JSON.stringify(item)));
 				}
 				
 				if (ttl) {
@@ -460,7 +460,7 @@ export class UserStorage {
 				// Clear existing set and add new items
 				await client.del(setKey);
 				if (setData.length > 0) {
-					await client.sAdd(setKey, ...setData.map(item => JSON.stringify(item)));
+					await client.sAdd(setKey, setData.map(item => JSON.stringify(item)));
 				}
 				
 				if (ttl) {
@@ -549,7 +549,7 @@ export class UserStorage {
 		await client.hSet(indexKey, key, JSON.stringify(indexEntry));
 		
 		// Set TTL for index key itself
-		const indexTtl = (storageValue.ttl || this.config.defaultTtl) + 86400; // Index lives longer
+		const indexTtl = (storageValue.ttl || this.config.defaultTtl || 3600) + 86400; // Index lives longer
 		await client.expire(indexKey, indexTtl);
 	}
 
