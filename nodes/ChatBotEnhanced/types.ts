@@ -22,14 +22,6 @@ export interface RedisCredential {
 		cert?: string;
 		key?: string;
 	};
-	connectionOptions?: {
-		connectTimeout?: number;
-		commandTimeout?: number;
-		retryAttempts?: number;
-		retryDelayOnFailover?: number;
-		keepAlive?: boolean;
-		maxRetriesPerRequest?: number;
-	};
 }
 
 // Template Types

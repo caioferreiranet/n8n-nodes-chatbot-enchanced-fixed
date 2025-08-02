@@ -204,57 +204,6 @@ export class RedisApi implements ICredentialType {
 				},
 			],
 		},
-		{
-			displayName: 'Connection Options',
-			name: 'connectionOptions',
-			type: 'collection',
-			placeholder: 'Add Connection Option',
-			default: {},
-			options: [
-				{
-					displayName: 'Connection Timeout (ms)',
-					name: 'connectTimeout',
-					type: 'number',
-					default: 10000,
-					description: 'Connection timeout in milliseconds',
-				},
-				{
-					displayName: 'Command Timeout (ms)',
-					name: 'commandTimeout',
-					type: 'number',
-					default: 5000,
-					description: 'Command execution timeout in milliseconds',
-				},
-				{
-					displayName: 'Retry Attempts',
-					name: 'retryAttempts',
-					type: 'number',
-					default: 3,
-					description: 'Number of retry attempts for failed connections',
-				},
-				{
-					displayName: 'Retry Delay (ms)',
-					name: 'retryDelayOnFailover',
-					type: 'number',
-					default: 100,
-					description: 'Delay between retry attempts in milliseconds',
-				},
-				{
-					displayName: 'Keep Alive',
-					name: 'keepAlive',
-					type: 'boolean',
-					default: true,
-					description: 'Enable TCP keep-alive',
-				},
-				{
-					displayName: 'Max Connections',
-					name: 'maxRetriesPerRequest',
-					type: 'number',
-					default: 3,
-					description: 'Maximum number of retries per request',
-				},
-			],
-		},
 	];
 
 	// Note: Redis credentials are tested within the node itself using Redis client

@@ -21,7 +21,7 @@ export class ChatBotEnhanced implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'ChatBot Enhanced',
 		name: 'chatBotEnhanced',
-		icon: 'file:chatbot-enhanced.svg',
+		icon: 'file:chatbot-enhanced.png',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
