@@ -22,7 +22,7 @@ export class ChatBotEnhanced implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'ChatBot Enhanced',
 		name: 'chatBotEnhanced',
-		icon: 'file:chatbot-enhanced.svg',
+		icon: 'https://r2.trigidigital.com/chatbot-enchanced.svg' as any,
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
