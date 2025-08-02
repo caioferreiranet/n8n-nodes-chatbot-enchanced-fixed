@@ -336,7 +336,7 @@ Flood Max Messages: 3                     // max messages allowed in time window
 
 ## Version history
 
-### 0.1.8 (Current) - Anti-Spam Enhancement & Output Consolidation
+### 0.1.9 (Current) - Anti-Spam Enhancement & Output Consolidation
 
 - 🛡️ **NEW ANTI-SPAM PROTECTION**: Built-in spam detection for Message Buffering operations
   - **Repeated Text Detection**: Hash-based similarity detection with configurable thresholds
