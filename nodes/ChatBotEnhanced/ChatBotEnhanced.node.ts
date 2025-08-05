@@ -1,8 +1,5 @@
 import type {
-	ICredentialTestFunctions,
-	ICredentialsDecrypted,
 	IExecuteFunctions,
-	INodeCredentialTestResult,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
@@ -11,15 +8,9 @@ import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 // Import managers
 import { RedisManager } from './managers/RedisManager';
-import { RateLimiter } from './managers/RateLimiter';
-import { SessionManager } from './managers/SessionManager';
-import { UserStorage } from './managers/UserStorage';
-import { AnalyticsTracker } from './managers/AnalyticsTracker';
-import { MessageRouter } from './managers/MessageRouter';
-import { MessageBuffer } from './managers/MessageBuffer';
 
 // Import types
-import { OperationType, RedisCredential } from './types';
+import { RedisCredential, BufferState, BufferedMessage } from './types';
 
 export class ChatBotEnhanced implements INodeType {
 	description: INodeTypeDescription = {
@@ -29,18 +20,48 @@ export class ChatBotEnhanced implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Enhanced chatbot node with Redis/Valkey integration for rate limiting, session management, and advanced features',
+		description: 'Advanced chatbot functionality with smart rate limiting, message buffering, session management, and Redis integration for scalable conversation automation',
+		codex: {
+			categories: ['AI', 'Communication', 'Data & Storage'],
+			subcategories: {
+				'AI': ['Memory', 'Context Management', 'Conversation AI'],
+				'Communication': ['Chatbots', 'Messaging', 'User Interaction'],
+				'Data & Storage': ['Redis', 'Session Management', 'Cache']
+			},
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://docs.n8n.io/integrations/community-nodes/'
+					},
+					{
+						url: 'https://github.com/n8n-io/n8n/blob/master/packages/nodes-base/CONTRIBUTING.md'
+					}
+				],
+				credentialDocumentation: [
+					{
+						url: 'https://redis.io/docs/getting-started/'
+					},
+					{
+						url: 'https://redis.io/docs/manual/security/'
+					}
+				]
+			},
+			alias: [
+				'chat bot', 'conversation bot', 'redis cache', 'rate limiter', 
+				'spam filter', 'message queue', 'session store', 'conversation memory',
+				'chatbot automation', 'messaging automation'
+			]
+		},
 		defaults: {
 			name: 'ChatBot Enhanced',
 		},
 		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main, NodeConnectionType.Main],
-		outputNames: ['Main', 'Status'],
+		outputs: [NodeConnectionType.Main, NodeConnectionType.Main, NodeConnectionType.Main],
+		outputNames: ['Success', 'Spam', 'Process'],
 		credentials: [
 			{
-				name: 'redisApi',
+				name: 'redis',
 				required: true,
-				testedBy: 'redisConnectionTest',
 			},
 		],
 		properties: [
@@ -52,103 +73,18 @@ export class ChatBotEnhanced implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
-						name: 'Rate Limiting',
-						value: 'rateLimiting',
-						description: 'Smart rate limiting with burst protection and penalties',
-					},
-					{
-						name: 'Session',
-						value: 'session',
-						description: 'User session management and storage operations',
-					},
-					{
 						name: 'Message',
 						value: 'message',
 						description: 'Message buffering and routing for human-like responses',
 					},
-					{
-						name: 'Analytics',
-						value: 'analytics',
-						description: 'Smart memory, metrics tracking and performance monitoring',
-					},
 				],
-				default: 'rateLimiting',
+				default: 'message',
 				description: 'Choose the category of operations you want to perform',
 			},
 
-			// Rate Limiting Operations
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						resource: ['rateLimiting'],
-					},
-				},
-				options: [
-					{
-						name: 'Check Rate Limit',
-						value: 'checkRateLimit',
-						action: 'Check rate limit status',
-						description: 'Verify if user is within rate limits and get remaining quota',
-					},
-					{
-						name: 'Reset User Limits',
-						value: 'resetLimits',
-						action: 'Reset rate limits for user',
-						description: 'Clear rate limiting counters for specific user',
-					},
-					{
-						name: 'Get Limit Status',
-						value: 'getLimitStatus',
-						action: 'Get detailed limit status',
-						description: 'Retrieve comprehensive rate limiting statistics',
-					},
-				],
-				default: 'checkRateLimit',
-			},
 
-			// Session Operations
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						resource: ['session'],
-					},
-				},
-				options: [
-					{
-						name: 'Create Session',
-						value: 'createSession',
-						action: 'Create new user session',
-						description: 'Initialize a new user session with context storage',
-					},
-					{
-						name: 'Update Session',
-						value: 'updateSession',
-						action: 'Update existing session',
-						description: 'Add message to session and extend timeout',
-					},
-					{
-						name: 'Get Session Data',
-						value: 'getSession',
-						action: 'Retrieve session information',
-						description: 'Get current session state and conversation history',
-					},
-					{
-						name: 'Store User Data',
-						value: 'storeUserData',
-						action: 'Store user profile data',
-						description: 'Save user preferences, history and profile information',
-					},
-				],
-				default: 'createSession',
-			},
+
+
 
 			// Message Operations
 			{
@@ -184,62 +120,27 @@ export class ChatBotEnhanced implements INodeType {
 				default: 'bufferMessages',
 			},
 
-			// Analytics Operations
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						resource: ['analytics'],
-					},
-				},
-				options: [
-					{
-						name: 'Track Event',
-						value: 'trackEvent',
-						action: 'Track analytics event',
-						description: 'Record custom events for analytics and monitoring',
-					},
-					{
-						name: 'Query Metrics',
-						value: 'queryMetrics',
-						action: 'Query performance metrics',
-						description: 'Retrieve analytics data and performance statistics',
-					},
-					{
-						name: 'Store Memory',
-						value: 'storeMemory',
-						action: 'Store in smart memory',
-						description: 'Save conversation context, FAQ or knowledge data',
-					},
-					{
-						name: 'Generate Report',
-						value: 'generateReport',
-						action: 'Generate analytics report',
-						description: 'Create comprehensive performance and usage reports',
-					},
-				],
-				default: 'trackEvent',
-			},
 
 
-			// Common Parameters
+			// Common Parameters (hidden for connection test)
 			{
 				displayName: 'Session Key',
 				name: 'sessionKey',
 				type: 'string',
 				required: true,
-				default: '={{$json.userId || $json.sessionId || "default"}}',
+				default: '={{$json.userId || $json.sessionId || "test-connection"}}',
 				description: 'Unique identifier for the user or session (can use expressions)',
 			},
 			{
 				displayName: 'Message Content',
 				name: 'messageContent',
-				type: 'string',
-				default: '={{$json.message || $json.text || $json.content}}',
-				description: 'The message content to process (can use expressions)',
+				type: 'json',
+				required: true,
+				default: '{}',
+				description: 'The message content as JSON object (can use expressions)',
+				typeOptions: {
+					alwaysOpenEditWindow: true,
+				},
 			},
 
 			// Buffer Time Configuration - Message Buffering
@@ -247,6 +148,7 @@ export class ChatBotEnhanced implements INodeType {
 				displayName: 'Buffer Time (Seconds)',
 				name: 'bufferTime',
 				type: 'number',
+				required: true,
 				default: 30,
 				typeOptions: {
 					minValue: 1,
@@ -266,6 +168,7 @@ export class ChatBotEnhanced implements INodeType {
 				displayName: 'Buffer Size',
 				name: 'bufferSize',
 				type: 'number',
+				required: true,
 				default: 100,
 				typeOptions: {
 					minValue: 1,
@@ -443,232 +346,322 @@ export class ChatBotEnhanced implements INodeType {
 				description: '⏰ Time window for counting messages. Example: 30 seconds means count messages in the last 30 seconds.'
 			},
 
-			// Rate Limiting Configuration
-			{
-				displayName: 'Rate Limit (Requests per Minute)',
-				name: 'rateLimit',
-				type: 'number',
-				default: 10,
-				typeOptions: {
-					minValue: 1,
-					maxValue: 1000,
-				},
-				displayOptions: {
-					show: {
-						resource: ['rateLimiting'],
-					},
-				},
-				description: 'Maximum number of requests allowed per minute',
-			},
 
-			// Session Configuration
-			{
-				displayName: 'Session Timeout (Minutes)',
-				name: 'sessionTimeout',
-				type: 'number',
-				default: 30,
-				typeOptions: {
-					minValue: 1,
-					maxValue: 1440,
-				},
-				displayOptions: {
-					show: {
-						resource: ['session'],
-					},
-				},
-				description: 'How long to keep sessions active without activity',
-			},
 
 			// Global Options
-			{
-				displayName: 'Enable Debug Mode',
-				name: 'debugMode',
-				type: 'boolean',
-				default: false,
-				description: 'Whether to enable detailed logging and debug information',
-			},
 			{
 				displayName: 'Redis Key Prefix',
 				name: 'keyPrefix',
 				type: 'string',
+				required: true,
 				default: 'chatbot',
 				description: 'Prefix for Redis keys to avoid collisions',
 			},
 		],
 	};
 
-	methods = {
-		credentialTest: {
-			async redisConnectionTest(
-				this: ICredentialTestFunctions,
-				credential: ICredentialsDecrypted,
-			): Promise<INodeCredentialTestResult> {
-				const credentials = credential.data as unknown as RedisCredential;
-				
-				try {
-					const redisManager = new RedisManager(credentials);
-					await redisManager.connect();
-					
-					// Test basic Redis operation using the client directly
-					const client = redisManager.getClient();
-					const testKey = 'n8n:credential:test';
-					
-					await client.set(testKey, 'test', { EX: 5 }); // 5 second expiry
-					const testValue = await client.get(testKey);
-					
-					if (testValue !== 'test') {
-						return {
-							status: 'Error',
-							message: 'Redis read/write test failed',
-						};
-					}
-					
-					// Clean up test key
-					await client.del(testKey);
-					await redisManager.cleanup();
-
-					return {
-						status: 'OK',
-						message: 'Redis connection successful!',
-					};
-				} catch (error) {
-					return {
-						status: 'Error',
-						message: `Redis connection failed: ${(error as Error).message}`,
-					};
-				}
-			},
-		},
-	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
-		const successItems: INodeExecutionData[] = [];
-		const processedItems: INodeExecutionData[] = [];
-		const errorItems: INodeExecutionData[] = [];
-		const metricsItems: INodeExecutionData[] = [];
+		const successOutput: INodeExecutionData[] = [];
+		const spamOutput: INodeExecutionData[] = [];
+		const processOutput: INodeExecutionData[] = [];
 
 		// Initialize Redis connection
 		let redisManager: RedisManager | null = null;
 		
 		try {
-			// Get Redis credentials (custom RedisApi)
-			const credentials = await this.getCredentials('redisApi') as RedisCredential;
+			// Get Redis credentials
+			const credentials = await this.getCredentials('redis') as RedisCredential;
 			
 			// Initialize Redis manager
 			redisManager = new RedisManager(credentials, {
 				connectionTimeout: 5000,
-				maxRetries: 3,
-				retryDelay: 1000,
-				healthCheckInterval: 30000,
 			});
 
-			await redisManager.connect();
+			// Ensure Redis connection is established before proceeding
+			const redisClient = redisManager.getClient();
+			if (!redisClient.isOpen) {
+				await redisClient.connect();
+			}
 
-			// Process each input item
-			for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
-				try {
-					const startTime = Date.now();
-					
-					// Get parameters for this item
-					const resource = this.getNodeParameter('resource', itemIndex) as string;
-					const operation = this.getNodeParameter('operation', itemIndex) as string;
-					const sessionKey = this.getNodeParameter('sessionKey', itemIndex) as string;
-					const messageContent = this.getNodeParameter('messageContent', itemIndex) as string;
-					const debugMode = this.getNodeParameter('debugMode', itemIndex) as boolean;
-					const keyPrefix = this.getNodeParameter('keyPrefix', itemIndex) as string;
+			// Process only first item (TimedBuffer pattern)
+			const itemIndex = 0;
+			
+			try {
+				const sessionKey = this.getNodeParameter('sessionKey', itemIndex) as string;
+				const messageContentJson = this.getNodeParameter('messageContent', itemIndex) as Record<string, unknown>;
+				const messageContent = typeof messageContentJson === 'string' ? messageContentJson : JSON.stringify(messageContentJson);
+				const keyPrefix = this.getNodeParameter('keyPrefix', itemIndex) as string;
 
-					// Map new resource/operation to legacy operation type
-					const operationType = ChatBotEnhanced.mapResourceOperationToLegacy(resource, operation);
+				// Buffer configuration
+				const bufferTime = this.getNodeParameter('bufferTime', itemIndex, 30) as number;
+				const bufferSize = this.getNodeParameter('bufferSize', itemIndex, 100) as number;
+				
+				// Anti-spam parameters (will be used during buffer flush)
+				const antiSpamType = this.getNodeParameter('antiSpamType', itemIndex, 'disabled') as string;
 
-					if (debugMode) {
-						console.log(`Processing item ${itemIndex} with operation: ${operationType}`);
+				// BufferKey with collision avoidance
+				const { id } = this.getWorkflow();
+				const bufferKey = `${keyPrefix}_buffer_${id}_${sessionKey}`;
+				const waitAmount = bufferTime * 1000; // Convert to milliseconds
+
+				// Get buffer state from Redis
+				const getBufferState = async (): Promise<BufferState | null> => {
+					try {
+						const val = await redisManager!.read(bufferKey);
+						if (!val) return null;
+						return JSON.parse(val) as BufferState;
+					} catch (error) {
+						return null;
 					}
+				};
 
-					// Execute the appropriate operation
-					const result = await ChatBotEnhanced.executeOperation(
-						redisManager,
-						operationType,
-						this,
-						{
-							sessionKey,
-							messageContent,
-							debugMode,
-							keyPrefix,
-							itemIndex,
-							inputData: items[itemIndex].json,
-						}
-					);
+				// Setup cancellation handler
+				this.onExecutionCancellation(async () => {
+					await redisManager!.delete(bufferKey);
+				});
 
-					const processingTime = Date.now() - startTime;
+				const existingBuffer = await getBufferState();
+				const newMessage: BufferedMessage = {
+					content: messageContent,
+					userId: sessionKey,
+					timestamp: Date.now(),
+					metadata: items[itemIndex].json,
+				};
 
-					// Add results to appropriate outputs
-					if (result.success) {
-						successItems.push({
-							json: {
-								...result.success,
-								processingTime,
-								itemIndex,
-							},
-						});
-					}
-
-					if (result.processed) {
-						processedItems.push({
-							json: {
-								...result.processed,
-								processingTime,
-								itemIndex,
-							},
-						});
-					}
-
-					if (result.metrics) {
-						metricsItems.push({
-							json: {
-								...result.metrics,
-								processingTime,
-								itemIndex,
-								redisHealth: redisManager.isAvailable(),
-							},
-						});
-					}
-
-				} catch (itemError) {
-					const errorOutput = {
-						type: 'error' as const,
-						data: {
-							errorType: 'ITEM_PROCESSING_ERROR',
-							errorMessage: itemError instanceof Error ? itemError.message : 'Unknown error',
-							errorCode: 'ITEM_EXEC_FAILED',
-							originalInput: items[itemIndex].json,
-							retryable: true,
-							itemIndex,
-						},
-						timestamp: Date.now(),
+				if (!existingBuffer) {
+					// FIRST MESSAGE - Create buffer and wait
+					const bufferState: BufferState = {
+						exp: Date.now() + waitAmount,
+						data: [newMessage],
+						sessionId: sessionKey,
+						totalCount: 1,
 					};
 
-					errorItems.push({ json: errorOutput });
+					await redisManager!.write(bufferKey, JSON.stringify(bufferState));
 
-					if (!this.continueOnFail()) {
-						throw new NodeOperationError(this.getNode(), itemError as Error);
+					// Check if buffer size reached immediately
+					if (bufferState.totalCount >= bufferSize) {
+						// Size trigger - flush immediately
+						const buffer = await getBufferState();
+						
+						// Analyze buffer for spam
+						const spamAnalysis = await ChatBotEnhanced.analyzeBufferForSpam(
+							this, redisManager!, buffer!, antiSpamType, itemIndex
+						);
+						
+						// Send spam report if any spam detected
+						if (spamAnalysis.spamDetected && spamAnalysis.spamMessages.length > 0) {
+							spamOutput.push({
+								json: {
+									type: 'spam_analysis',
+									totalMessages: buffer!.totalCount,
+									spamMessages: spamAnalysis.spamMessages,
+									cleanMessages: spamAnalysis.cleanMessages,
+									spamCount: spamAnalysis.spamMessages.length,
+									spamTypes: spamAnalysis.spamTypes,
+									sessionId: sessionKey,
+									timestamp: Date.now(),
+								},
+								pairedItem: { item: itemIndex },
+							});
+						}
+						
+						successOutput.push({
+							json: {
+								type: 'buffer_flush',
+								messages: buffer!.data.map(msg => msg.content),
+								totalMessages: buffer!.totalCount,
+								trigger: 'size',
+								spamAnalysis: {
+									spamDetected: spamAnalysis.spamDetected,
+									spamCount: spamAnalysis.spamMessages.length,
+									cleanCount: spamAnalysis.cleanMessages.length,
+								},
+								sessionId: sessionKey,
+								timestamp: Date.now(),
+							},
+							pairedItem: { item: itemIndex },
+						});
+						await redisManager!.delete(bufferKey);
+						return [successOutput, spamOutput, processOutput];
 					}
+
+					// BLOCKING WAIT for timer (TimedBuffer pattern)
+					let resume = false;
+					while (!resume) {
+						const refreshBuffer = await getBufferState();
+						if (!refreshBuffer) {
+							throw new NodeOperationError(this.getNode(), `Buffer state lost from Redis. Key: "${bufferKey}"`);
+						}
+
+						// Check if buffer size reached during wait
+						if (refreshBuffer.totalCount >= bufferSize) {
+							resume = true;
+							break;
+						}
+
+						const remainingTime = Math.max(0, refreshBuffer.exp - Date.now());
+						resume = remainingTime === 0;
+						
+						if (!resume) {
+							await new Promise((resolve) => {
+								const timer = setTimeout(resolve, Math.min(remainingTime, 1000)); // Check every 1s
+								this.onExecutionCancellation(() => clearTimeout(timer));
+							});
+						}
+					}
+
+					// Timer completed or size reached - flush buffer
+					const finalBuffer = await getBufferState();
+					if (finalBuffer) {
+						const trigger = finalBuffer.totalCount >= bufferSize ? 'size' : 'time';
+						
+						// Analyze buffer for spam BEFORE flushing
+						const spamAnalysis = await ChatBotEnhanced.analyzeBufferForSpam(
+							this, redisManager!, finalBuffer, antiSpamType, itemIndex
+						);
+						
+						// Send spam report if any spam detected
+						if (spamAnalysis.spamDetected && spamAnalysis.spamMessages.length > 0) {
+							spamOutput.push({
+								json: {
+									type: 'spam_analysis',
+									totalMessages: finalBuffer.totalCount,
+									spamMessages: spamAnalysis.spamMessages,
+									cleanMessages: spamAnalysis.cleanMessages,
+									spamCount: spamAnalysis.spamMessages.length,
+									spamTypes: spamAnalysis.spamTypes,
+									sessionId: sessionKey,
+									timestamp: Date.now(),
+								},
+								pairedItem: { item: itemIndex },
+							});
+						}
+						
+						// Always send buffer flush to Success (regardless of spam)
+						successOutput.push({
+							json: {
+								type: 'buffer_flush',
+								messages: finalBuffer.data.map(msg => msg.content),
+								totalMessages: finalBuffer.totalCount,
+								trigger,
+								spamAnalysis: {
+									spamDetected: spamAnalysis.spamDetected,
+									spamCount: spamAnalysis.spamMessages.length,
+									cleanCount: spamAnalysis.cleanMessages.length,
+								},
+								sessionId: sessionKey,
+								timestamp: Date.now(),
+							},
+							pairedItem: { item: itemIndex },
+						});
+						await redisManager!.delete(bufferKey);
+					}
+
+				} else {
+					// SUBSEQUENT MESSAGE - Add to existing buffer
+					const updatedData = [...existingBuffer.data, newMessage];
+					const bufferState: BufferState = {
+						exp: Date.now() + waitAmount, // Reset timer
+						data: updatedData,
+						sessionId: sessionKey,
+						totalCount: updatedData.length,
+					};
+
+					await redisManager!.write(bufferKey, JSON.stringify(bufferState));
+
+					// Check if buffer size reached
+					if (bufferState.totalCount >= bufferSize) {
+						// Size trigger - flush immediately
+						// Analyze buffer for spam
+						const spamAnalysis = await ChatBotEnhanced.analyzeBufferForSpam(
+							this, redisManager!, bufferState, antiSpamType, itemIndex
+						);
+						
+						// Send spam report if any spam detected
+						if (spamAnalysis.spamDetected && spamAnalysis.spamMessages.length > 0) {
+							spamOutput.push({
+								json: {
+									type: 'spam_analysis',
+									totalMessages: bufferState.totalCount,
+									spamMessages: spamAnalysis.spamMessages,
+									cleanMessages: spamAnalysis.cleanMessages,
+									spamCount: spamAnalysis.spamMessages.length,
+									spamTypes: spamAnalysis.spamTypes,
+									sessionId: sessionKey,
+									timestamp: Date.now(),
+								},
+								pairedItem: { item: itemIndex },
+							});
+						}
+						
+						successOutput.push({
+							json: {
+								type: 'buffer_flush',
+								messages: bufferState.data.map(msg => msg.content),
+								totalMessages: bufferState.totalCount,
+								trigger: 'size',
+								spamAnalysis: {
+									spamDetected: spamAnalysis.spamDetected,
+									spamCount: spamAnalysis.spamMessages.length,
+									cleanCount: spamAnalysis.cleanMessages.length,
+								},
+								sessionId: sessionKey,
+								timestamp: Date.now(),
+							},
+							pairedItem: { item: itemIndex },
+						});
+						await redisManager!.delete(bufferKey);
+					} else {
+						// Message added to buffer - return skipped (Process output)
+						processOutput.push({
+							json: {
+								status: 'buffered',
+								message: messageContent,
+								sessionId: sessionKey,
+								totalInBuffer: bufferState.totalCount,
+								operationType: 'messageBuffering',
+								timestamp: Date.now(),
+							},
+							pairedItem: { item: itemIndex },
+						});
+					}
+				}
+
+			} catch (itemError) {
+				const errorOutput = {
+					status: 'error',
+					errorMessage: itemError instanceof Error ? itemError.message : 'Unknown error',
+					sessionId: this.getNodeParameter('sessionKey', itemIndex) as string,
+					operationType: 'messageBuffering',
+					timestamp: Date.now(),
+				};
+
+				processOutput.push({
+					json: errorOutput,
+					pairedItem: { item: itemIndex },
+				});
+
+				if (!this.continueOnFail()) {
+					throw new NodeOperationError(this.getNode(), itemError as Error);
 				}
 			}
 
 		} catch (error) {
 			const errorOutput = {
-				type: 'error' as const,
-				data: {
-					errorType: 'NODE_EXECUTION_ERROR',
-					errorMessage: error instanceof Error ? error.message : 'Unknown error',
-					errorCode: 'NODE_EXEC_FAILED',
-					retryable: false,
-				},
+				status: 'error',
+				errorMessage: error instanceof Error ? error.message : 'Unknown error',
+				operationType: 'messageBuffering',
+				sessionId: 'node_level_error',
 				timestamp: Date.now(),
 			};
 
-			errorItems.push({ json: errorOutput });
+			processOutput.push({
+				json: errorOutput,
+				pairedItem: { item: 0 },
+			});
 
 			if (!this.continueOnFail()) {
 				throw new NodeOperationError(this.getNode(), error as Error);
@@ -680,739 +673,243 @@ export class ChatBotEnhanced implements INodeType {
 			}
 		}
 
-		// Combine outputs: Main (Success + Processed), Status (Error + Metrics + Anti-spam)
-		// Add backward compatibility metadata to identify original output type
-		const mainOutput = [
-			...successItems.map(item => ({
-				...item,
-				json: {
-					...item.json,
-					_outputType: 'success',
-					_originalOutput: 0 // Original Success output index
-				}
-			})),
-			...processedItems.map(item => ({
-				...item,
-				json: {
-					...item.json,
-					_outputType: 'processed',
-					_originalOutput: 1 // Original Processed output index
-				}
-			}))
-		];
-		
-		const statusOutput = [
-			...errorItems.map(item => ({
-				...item,
-				json: {
-					...item.json,
-					_outputType: 'error',
-					_originalOutput: 2 // Original Error output index
-				}
-			})),
-			...metricsItems.map(item => ({
-				...item,
-				json: {
-					...item.json,
-					_outputType: 'metrics',
-					_originalOutput: 3 // Original Metrics output index
-				}
-			}))
-		];
-		
-		return [mainOutput, statusOutput];
+		// Return 3 output arrays: Success, Spam, Process
+		return [successOutput, spamOutput, processOutput];
 	}
 
 	/**
-	 * Map new resource/operation pattern to legacy operation type
+	 * Analyze buffer for spam patterns
 	 */
-	private static mapResourceOperationToLegacy(resource: string, operation: string): OperationType {
-		// Rate Limiting Actions
-		if (resource === 'rateLimiting') {
-			return 'smartRateLimit';
-		}
-		
-		// Session Actions
-		if (resource === 'session') {
-			if (operation === 'storeUserData') {
-				return 'userStorage';
-			}
-			return 'sessionManagement';
-		}
-		
-		// Message Actions
-		if (resource === 'message') {
-			if (operation === 'bufferMessages') {
-				return 'messageBuffering';
-			}
-			return 'messageRouting';
-		}
-		
-		// Analytics Actions
-		if (resource === 'analytics') {
-			if (operation === 'storeMemory') {
-				return 'smartMemory';
-			}
-			return 'analytics';
-		}
-		
-		// Default fallback
-		return 'smartRateLimit';
-	}
-
-	/**
-	 * Execute specific operation based on type
-	 */
-	private static async executeOperation(
-		redisManager: RedisManager,
-		operationType: OperationType,
+	private static async analyzeBufferForSpam(
 		executeFunctions: IExecuteFunctions,
-		params: {
-			sessionKey: string;
-			messageContent: string;
-			debugMode: boolean;
-			keyPrefix: string;
-			itemIndex: number;
-			inputData: any;
-		}
+		redisManager: RedisManager,
+		bufferState: BufferState,
+		antiSpamType: string,
+		itemIndex: number
 	): Promise<{
-		success?: any;
-		processed?: any;
-		metrics?: any;
+		spamDetected: boolean;
+		spamMessages: Array<{ content: string; reason: string; confidence: number }>;
+		cleanMessages: string[];
+		spamTypes: string[];
 	}> {
-		const { sessionKey, messageContent, debugMode, keyPrefix, itemIndex, inputData } = params;
+		const spamMessages: Array<{ content: string; reason: string; confidence: number }> = [];
+		const cleanMessages: string[] = [];
+		const spamTypes: string[] = [];
 
-		switch (operationType) {
-			case 'smartRateLimit':
-				return ChatBotEnhanced.executeRateLimit(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex });
-
-			case 'sessionManagement':
-				return ChatBotEnhanced.executeSessionManagement(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex, inputData });
-
-			case 'messageBuffering':
-				return ChatBotEnhanced.executeMessageBuffering(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex });
-
-			case 'smartMemory':
-				return ChatBotEnhanced.executeSmartMemory(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex, inputData });
-
-			case 'messageRouting':
-				return ChatBotEnhanced.executeMessageRouting(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex, inputData });
-
-			case 'userStorage':
-				return ChatBotEnhanced.executeUserStorage(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex, inputData });
-
-			case 'analytics':
-				return ChatBotEnhanced.executeAnalytics(redisManager, executeFunctions, { sessionKey, messageContent, debugMode, keyPrefix, itemIndex, inputData });
-
-			default:
-				throw new NodeOperationError(executeFunctions.getNode(), `Unknown operation type: ${operationType}`);
-		}
-	}
-
-	/**
-	 * Execute Smart Rate Limiting
-	 */
-	private static async executeRateLimit(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
-	) {
-		const rateLimit = executeFunctions.getNodeParameter('rateLimit', params.itemIndex, 10) as number;
-		
-		const rateLimiter = new RateLimiter(redisManager, {
-			algorithm: 'sliding_window',
-			strategy: 'per_user',
-			windowSize: 60, // 1 minute in seconds
-			maxRequests: rateLimit,
-			burstLimit: Math.ceil(rateLimit * 1.5),
-			penaltyTime: 300, // 5 minutes in seconds
-			keyPrefix: params.keyPrefix,
-		});
-
-		const result = await rateLimiter.checkRateLimit(params.sessionKey);
-
-		if (params.debugMode) {
-			console.log(`Rate limit check for ${params.sessionKey}:`, result);
+		if (antiSpamType === 'disabled') {
+			return {
+				spamDetected: false,
+				spamMessages: [],
+				cleanMessages: bufferState.data.map(msg => msg.content),
+				spamTypes: [],
+			};
 		}
 
-		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'smartRateLimit',
-					allowed: result.allowed,
-					rateLimitData: {
-						requestCount: result.totalRequests,
-						remainingRequests: result.remainingRequests,
-						resetTime: result.resetTime,
-						retryAfter: result.retryAfter,
-					},
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'smartRateLimit',
-					metrics: {
-						requestCount: result.totalRequests,
-						remainingRequests: result.remainingRequests,
-						windowUtilization: (result.totalRequests / rateLimit) * 100,
-					},
-					performance: {
-						processingTime: 0, // Will be set by caller
-						redisHealth: redisManager.isAvailable(),
-					},
-				},
-				timestamp: Date.now(),
-			},
-		};
-	}
-
-	/**
-	 * Execute Session Management
-	 */
-	private static async executeSessionManagement(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number; inputData: any }
-	) {
-		const sessionTimeout = executeFunctions.getNodeParameter('sessionTimeout', params.itemIndex, 30) as number;
-		
-		const sessionManager = new SessionManager(redisManager, {
-			defaultTtl: sessionTimeout * 60, // Convert minutes to seconds
-			maxSessions: 10000,
-			enableCleanup: true,
-			cleanupInterval: 3600,
-			contextStorage: true,
-			maxContextSize: 100,
-			compression: false,
-			keyPrefix: params.keyPrefix,
-		});
-
-		// Check if session exists, create if not
-		let sessionData = await sessionManager.getSession(params.sessionKey);
-		if (!sessionData) {
-			sessionData = await sessionManager.createSession(params.sessionKey, {
-				userId: params.inputData.userId || params.sessionKey,
-				channelId: params.inputData.channelId,
-				initialContext: {},
-				metadata: params.inputData.metadata || {},
-			});
-		}
-
-		// Update session with new message
-		sessionData = await sessionManager.updateSession(params.sessionKey, {
-			message: params.messageContent,
-			messageType: 'user',
-			extendTtl: true,
-		}) || sessionData;
-
-		if (params.debugMode) {
-			console.log(`Session data for ${params.sessionKey}:`, sessionData);
-		}
-
-		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'sessionManagement',
-					sessionData: {
-						startTime: sessionData.createdAt,
-						lastActivity: sessionData.lastActivity,
-						messageCount: sessionData.messageCount,
-						context: sessionData.context,
-					},
-				},
-				timestamp: Date.now(),
-			},
-			processed: {
-				type: 'processed',
-				data: {
-					originalMessage: params.messageContent,
-					enrichmentData: {
-						sessionContext: sessionData.context,
-						userHistory: sessionData.conversationHistory || [],
-						sessionAge: Date.now() - sessionData.createdAt,
-					},
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'sessionManagement',
-					metrics: {
-						activeSession: 1,
-						messageCount: sessionData.messageCount,
-						sessionAge: Date.now() - sessionData.createdAt,
-					},
-					performance: {
-						processingTime: 0,
-						redisHealth: redisManager.isAvailable(),
-					},
-				},
-				timestamp: Date.now(),
-			},
-		};
-	}
-
-	/**
-	 * Execute Message Buffering (Enhanced with Anti-Spam)
-	 */
-	private static async executeMessageBuffering(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
-	) {
-		// Always use enhanced buffering with anti-spam capabilities
-		return this.executeEnhancedMessageBuffering(redisManager, executeFunctions, params);
-	}
-
-	/**
-	 * Execute Enhanced Message Buffering with Anti-Spam Detection
-	 */
-	private static async executeEnhancedMessageBuffering(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number }
-	) {
-		// Get parameters
-		const bufferTime = executeFunctions.getNodeParameter('bufferTime', params.itemIndex, 30) as number;
-		const bufferSize = executeFunctions.getNodeParameter('bufferSize', params.itemIndex, 100) as number;
-		const bufferPattern = executeFunctions.getNodeParameter('bufferPattern', params.itemIndex, 'collect_send') as string;
-		
-		// Anti-spam parameters
-		const antiSpamType = executeFunctions.getNodeParameter('antiSpamType', params.itemIndex, 'disabled') as string;
-		const spamAction = executeFunctions.getNodeParameter('spamAction', params.itemIndex, 'block') as string;
-		const similarityThreshold = executeFunctions.getNodeParameter('similarityThreshold', params.itemIndex, 80) as number;
-		const floodMaxMessages = executeFunctions.getNodeParameter('floodMaxMessages', params.itemIndex, 5) as number;
-		const floodTimeWindow = executeFunctions.getNodeParameter('floodTimeWindow', params.itemIndex, 30) as number;
-
-		// Configure MessageBuffer with anti-spam detection
-		const bufferConfig = {
-			pattern: bufferPattern as any,
-			maxSize: bufferSize,
-			flushInterval: bufferTime,
-			enableStreams: true,
-			keyPrefix: `${params.keyPrefix}_enhanced`,
-			enableAntiSpam: antiSpamType !== 'disabled',
-			spamDetectionConfig: {
-				detectionType: antiSpamType as any,
-				action: spamAction as any,
-				userId: params.sessionKey,
-				sessionId: params.sessionKey,
-				similarityThreshold,
-				detectionTimeWindow: 5, // minutes
-				floodMaxMessages,
-				floodTimeWindow,
-				keyPrefix: `${params.keyPrefix}_spam`
-			}
-		};
-
-		const messageBuffer = new MessageBuffer(redisManager, bufferConfig);
-
-		try {
-			// Add message to buffer
-			const result = await messageBuffer.addMessage(params.sessionKey, {
-				content: params.messageContent,
-				userId: params.sessionKey,
-				metadata: {
-					timestamp: Date.now(),
-					source: 'chatbot_enhanced'
+		// Analyze buffer for spam patterns
+		switch (antiSpamType) {
+			case 'repeated':
+				const similarityThreshold = executeFunctions.getNodeParameter('similarityThreshold', itemIndex, 80) as number;
+				const spamAnalysisResult = ChatBotEnhanced.analyzeRepeatedContent(bufferState.data, similarityThreshold);
+				spamMessages.push(...spamAnalysisResult.spamMessages);
+				cleanMessages.push(...spamAnalysisResult.cleanMessages);
+				if (spamAnalysisResult.spamMessages.length > 0) {
+					spamTypes.push('repeated_content');
 				}
-			});
-
-			if (params.debugMode) {
-				console.log(`Enhanced buffer result:`, {
-					bufferId: result.bufferId,
-					messageId: result.messageId,
-					shouldFlush: result.shouldFlush,
-					spamDetected: result.spamDetectionResult?.isSpam,
-					blocked: result.blocked
-				});
-			}
-
-			// Handle blocked messages
-			if (result.blocked) {
-				return {
-					success: {
-						type: 'success',
-						data: {
-							type: 'blocked',
-							status: 'spam_blocked',
-							message: 'Message blocked due to spam detection',
-							sessionId: params.sessionKey,
-							operationType: 'messageBuffering',
-							spamDetection: result.spamDetectionResult
-						},
-						timestamp: Date.now()
-					},
-					metrics: {
-						type: 'metrics',
-						data: {
-							operationType: 'messageBuffering',
-							metrics: {
-								spamBlocked: 1,
-								spamType: result.spamDetectionResult?.spamType,
-								confidence: result.spamDetectionResult?.confidence
-							},
-							performance: {
-								processingTime: 0,
-								redisHealth: redisManager.isAvailable()
-							}
-						},
-						timestamp: Date.now()
-					}
-				};
-			}
-
-			// Check if we should flush
-			if (result.shouldFlush) {
-				const flushResult = await messageBuffer.flush(params.sessionKey, 'size');
+				break;
 				
-				return {
-					success: {
-						type: 'success',
-						data: {
-							type: 'batch_ready',
-							status: 'flushed',
-							messages: flushResult.flushedMessages.map(msg => msg.content),
-							totalMessages: flushResult.flushedMessages.length,
-							sessionId: params.sessionKey,
-							operationType: 'messageBuffering',
-							flushTrigger: flushResult.trigger,
-							spamStats: flushResult.spamStats
-						},
-						timestamp: Date.now()
-					},
-					processed: {
-						type: 'processed',
-						data: {
-							originalMessage: params.messageContent,
-							transformedMessage: flushResult.flushedMessages.map(msg => msg.content).join(' | '),
-							enrichmentData: {
-								buffered: true,
-								totalMessagesCollected: flushResult.flushedMessages.length,
-								bufferDuration: bufferTime,
-								flushType: flushResult.trigger,
-								spamDetected: flushResult.spamStats?.spamDetected || 0,
-								antiSpamEnabled: antiSpamType !== 'disabled'
-							}
-						},
-						timestamp: Date.now()
-					},
-					metrics: {
-						type: 'metrics',
-						data: {
-							operationType: 'messageBuffering',
-							metrics: {
-								totalMessagesBuffered: flushResult.flushedMessages.length,
-								bufferTime: bufferTime,
-								flushTrigger: flushResult.trigger,
-								processingTime: flushResult.processingTime,
-								spamStats: flushResult.spamStats
-							},
-							performance: {
-								processingTime: flushResult.processingTime,
-								bufferEfficiency: 100,
-								redisHealth: redisManager.isAvailable()
-							}
-						},
-						timestamp: Date.now()
+			case 'flood':
+				// For flood protection, check if buffer size reached too quickly
+				const bufferCreationTime = Math.min(...bufferState.data.map(msg => msg.timestamp));
+				const bufferDuration = Date.now() - bufferCreationTime;
+				const floodMaxMessages = executeFunctions.getNodeParameter('floodMaxMessages', itemIndex, 5) as number;
+				const floodTimeWindow = executeFunctions.getNodeParameter('floodTimeWindow', itemIndex, 30) as number;
+				
+				if (bufferState.data.length >= floodMaxMessages && bufferDuration < (floodTimeWindow * 1000)) {
+					// All messages are considered spam due to flooding
+					for (const message of bufferState.data) {
+						spamMessages.push({
+							content: message.content,
+							reason: 'flooding',
+							confidence: 95,
+						});
 					}
-				};
-			} else {
-				// Message added to buffer, waiting for flush
-				return {
-					success: {
-						type: 'success',
-						data: {
-							type: 'buffered',
-							status: 'pending',
-							message: params.messageContent,
-							sessionId: params.sessionKey,
-							operationType: 'messageBuffering',
-							messageId: result.messageId,
-							spamDetection: result.spamDetectionResult
-						},
-						timestamp: Date.now()
-					},
-					processed: {
-						type: 'processed',
-						data: {
-							originalMessage: params.messageContent,
-							transformedMessage: params.messageContent,
-							enrichmentData: {
-								buffered: true,
-								messageId: result.messageId,
-								waitingForFlush: true,
-								spamDetected: result.spamDetectionResult?.isSpam || false,
-								antiSpamEnabled: antiSpamType !== 'disabled'
-							}
-						},
-						timestamp: Date.now()
-					},
-					metrics: {
-						type: 'metrics',
-						data: {
-							operationType: 'messageBuffering',
-							metrics: {
-								messageBuffered: 1,
-								spamDetected: result.spamDetectionResult?.isSpam ? 1 : 0,
-								spamType: result.spamDetectionResult?.spamType
-							},
-							performance: {
-								processingTime: 0,
-								redisHealth: redisManager.isAvailable()
-							}
-						},
-						timestamp: Date.now()
+					spamTypes.push('flooding');
+				} else {
+					cleanMessages.push(...bufferState.data.map(msg => msg.content));
+				}
+				break;
+				
+			case 'pattern':
+				// Check each message for spam patterns
+				for (const message of bufferState.data) {
+					const hasSpamPattern = ChatBotEnhanced.checkSpamPatterns(message.content);
+					if (hasSpamPattern.isSpam) {
+						spamMessages.push({
+							content: message.content,
+							reason: hasSpamPattern.reason,
+							confidence: 90,
+						});
+						if (!spamTypes.includes(hasSpamPattern.reason)) {
+							spamTypes.push(hasSpamPattern.reason);
+						}
+					} else {
+						cleanMessages.push(message.content);
 					}
-				};
-			}
-		} catch (error) {
-			throw new NodeOperationError(
-				executeFunctions.getNode(),
-				`Enhanced message buffering failed: ${error.message}`
-			);
+				}
+				break;
 		}
-	}
 
-
-	/**
-	 * Execute Smart Memory
-	 */
-	private static async executeSmartMemory(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number; inputData: any }
-	) {
-		// Implementation for smart memory
 		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'smartMemory',
-					memoryStored: true,
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'smartMemory',
-					metrics: {
-						memoryEntries: 1,
-					},
-					performance: {
-						processingTime: 0,
-						redisHealth: redisManager.isAvailable(),
-					},
-				},
-				timestamp: Date.now(),
-			},
+			spamDetected: spamMessages.length > 0,
+			spamMessages,
+			cleanMessages,
+			spamTypes,
 		};
 	}
 
 	/**
-	 * Execute Message Routing
+	 * Analyze repeated content within buffered messages
 	 */
-	private static async executeMessageRouting(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number; inputData: any }
-	) {
-		const messageRouter = new MessageRouter(redisManager, {
-			pattern: 'topic_based',
-			channels: ['support-queue', 'sales-queue', 'general-queue'],
-			routingRules: [
-				{ name: 'support-rule', condition: 'support', targetChannel: 'support-queue', priority: 1, enabled: true },
-				{ name: 'sales-rule', condition: 'sales', targetChannel: 'sales-queue', priority: 2, enabled: true },
-			],
-			enablePatternMatching: true,
-			keyPrefix: params.keyPrefix,
-		});
+	private static analyzeRepeatedContent(
+		messages: BufferedMessage[], 
+		similarityThreshold: number
+	): {
+		spamMessages: Array<{ content: string; reason: string; confidence: number }>;
+		cleanMessages: string[];
+	} {
+		const spamMessages: Array<{ content: string; reason: string; confidence: number }> = [];
+		const cleanMessages: string[] = [];
+		const processedMessages: Set<string> = new Set();
 
-		const routingResult = await messageRouter.routeMessage({
-			content: params.messageContent,
-			sourceChannel: params.inputData.channelId,
-			metadata: {
-				...params.inputData.metadata || {},
-				userId: params.sessionKey,
-				timestamp: Date.now(),
-			},
-		});
+		for (let i = 0; i < messages.length; i++) {
+			const currentMsg = messages[i];
+			let isSpam = false;
+			let maxSimilarity = 0;
 
-		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'messageRouting',
-					routedTo: routingResult.delivered.join(', '),
-					routingReason: routingResult.routingRule || 'default',
-				},
-				timestamp: Date.now(),
-			},
-			processed: {
-				type: 'processed',
-				data: {
-					originalMessage: params.messageContent,
-					routingDecision: routingResult.delivered.join(', '),
-					enrichmentData: {
-						routingRule: routingResult.routingRule,
-						processingTime: routingResult.processingTime,
-						deliveredCount: routingResult.delivered.length,
-					},
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'messageRouting',
-					metrics: {
-						routingDecisions: 1,
-						deliveredChannels: routingResult.delivered.length,
-						failedChannels: routingResult.failed.length,
-					},
-					performance: {
-						processingTime: 0,
-						redisHealth: redisManager.isAvailable(),
-					},
-				},
-				timestamp: Date.now(),
-			},
-		};
+			// Skip if already processed as spam
+			if (processedMessages.has(currentMsg.content)) {
+				continue;
+			}
+
+			// Compare with other messages in buffer
+			for (let j = 0; j < messages.length; j++) {
+				if (i === j) continue;
+				
+				const otherMsg = messages[j];
+				const similarity = ChatBotEnhanced.calculateStringSimilarity(
+					currentMsg.content, 
+					otherMsg.content
+				);
+
+				if (similarity >= similarityThreshold) {
+					maxSimilarity = Math.max(maxSimilarity, similarity);
+					isSpam = true;
+					
+					// Mark both messages as spam (if not already processed)
+					if (!processedMessages.has(otherMsg.content)) {
+						spamMessages.push({
+							content: otherMsg.content,
+							reason: 'repeated_content',
+							confidence: similarity,
+						});
+						processedMessages.add(otherMsg.content);
+					}
+				}
+			}
+
+			if (isSpam) {
+				spamMessages.push({
+					content: currentMsg.content,
+					reason: 'repeated_content',
+					confidence: maxSimilarity,
+				});
+				processedMessages.add(currentMsg.content);
+			} else {
+				cleanMessages.push(currentMsg.content);
+			}
+		}
+
+		return { spamMessages, cleanMessages };
+	}
+
+
+
+	/**
+	 * Check for spam patterns
+	 */
+	private static checkSpamPatterns(messageContent: string): { isSpam: boolean; reason: string } {
+		// URL pattern
+		const urlPattern = /(https?:\/\/[^\s]+)/gi;
+		if (urlPattern.test(messageContent)) {
+			return { isSpam: true, reason: 'contains_url' };
+		}
+		
+		// Phone pattern
+		const phonePattern = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
+		if (phonePattern.test(messageContent)) {
+			return { isSpam: true, reason: 'contains_phone' };
+		}
+		
+		// Email pattern
+		const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+		if (emailPattern.test(messageContent)) {
+			return { isSpam: true, reason: 'contains_email' };
+		}
+		
+		return { isSpam: false, reason: '' };
 	}
 
 	/**
-	 * Execute User Storage
+	 * Calculate string similarity (simple Levenshtein-based)
 	 */
-	private static async executeUserStorage(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number; inputData: any }
-	) {
-		const userStorage = new UserStorage(redisManager, {
-			defaultTtl: 30 * 24 * 3600, // 30 days in seconds
-			enableTypeDetection: true,
-			enableCompression: false,
-			keyPrefix: params.keyPrefix,
-			maxValueSize: 1024 * 1024, // 1MB
-			enableIndexing: true,
-		});
-
-		await userStorage.store(params.sessionKey, 'profile', {
-			lastMessage: params.messageContent,
-			lastActivity: Date.now(),
-			messageHistory: [params.messageContent],
-		}, {
-			ttl: 30 * 24 * 3600, // 30 days
-			metadata: { type: 'user_profile' },
-		});
-
-		const userData = await userStorage.retrieve(params.sessionKey, 'profile');
-
-		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'userStorage',
-					dataStored: true,
-					userData: userData,
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'userStorage',
-					metrics: {
-						dataEntries: 1,
-						storageSize: JSON.stringify(userData || {}).length,
-					},
-					performance: {
-						processingTime: 0,
-						redisHealth: redisManager.isAvailable(),
-					},
-				},
-				timestamp: Date.now(),
-			},
-		};
+	private static calculateStringSimilarity(str1: string, str2: string): number {
+		if (str1 === str2) return 100;
+		if (str1.length === 0 || str2.length === 0) return 0;
+		
+		const longer = str1.length > str2.length ? str1 : str2;
+		const shorter = str1.length > str2.length ? str2 : str1;
+		
+		if (longer.length === 0) return 100;
+		
+		const distance = ChatBotEnhanced.levenshteinDistance(longer, shorter);
+		return Math.round(((longer.length - distance) / longer.length) * 100);
 	}
 
 	/**
-	 * Execute Analytics
+	 * Calculate Levenshtein distance
 	 */
-	private static async executeAnalytics(
-		redisManager: RedisManager,
-		executeFunctions: IExecuteFunctions,
-		params: { sessionKey: string; messageContent: string; debugMode: boolean; keyPrefix: string; itemIndex: number; inputData: any }
-	) {
-		const analyticsTracker = new AnalyticsTracker(redisManager, {
-			retentionDays: 30,
-			enableRealTimeMetrics: true,
-			batchSize: 100,
-			flushInterval: 60,
-			keyPrefix: params.keyPrefix,
-			enableHistograms: true,
-		});
-
-		await analyticsTracker.recordMetric(
-			'message_processed',
-			1,
-			'counter',
-			{ userId: params.sessionKey, source: 'chatbot-enhanced' },
-			{ messageLength: params.messageContent.length, timestamp: Date.now() }
-		);
-
-		const analytics = await analyticsTracker.queryMetrics({
-			name: 'message_processed',
-			startTime: Date.now() - 3600000, // 1 hour ago
-			endTime: Date.now(),
-			aggregation: 'count',
-			limit: 100,
-		});
-
-		return {
-			success: {
-				type: 'success',
-				data: {
-					message: params.messageContent,
-					sessionId: params.sessionKey,
-					operationType: 'analytics',
-					eventTracked: true,
-					analytics: analytics,
-				},
-				timestamp: Date.now(),
-			},
-			metrics: {
-				type: 'metrics',
-				data: {
-					operationType: 'analytics',
-					metrics: {
-						eventsTracked: 1,
-						analyticsEntries: analytics.length,
-						totalCount: analytics.reduce((sum, metric) => sum + metric.value, 0),
-					},
-					performance: {
-						processingTime: 0,
-						redisHealth: redisManager.isAvailable(),
-					},
-				},
-				timestamp: Date.now(),
-			},
-		};
+	private static levenshteinDistance(str1: string, str2: string): number {
+		const matrix = [];
+		
+		for (let i = 0; i <= str2.length; i++) {
+			matrix[i] = [i];
+		}
+		
+		for (let j = 0; j <= str1.length; j++) {
+			matrix[0][j] = j;
+		}
+		
+		for (let i = 1; i <= str2.length; i++) {
+			for (let j = 1; j <= str1.length; j++) {
+				if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+					matrix[i][j] = matrix[i - 1][j - 1];
+				} else {
+					matrix[i][j] = Math.min(
+						matrix[i - 1][j - 1] + 1,
+						matrix[i][j - 1] + 1,
+						matrix[i - 1][j] + 1
+					);
+				}
+			}
+		}
+		
+		return matrix[str2.length][str1.length];
 	}
+
+
+
+
+
+
+
 }

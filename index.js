@@ -5,9 +5,5 @@ module.exports = {
 	// Export all nodes
 	nodes: [
 		require('./dist/nodes/ChatBotEnhanced/ChatBotEnhanced.node.js')
-	],
-	// Export all credentials
-	credentials: [
-		require('./dist/credentials/RedisApi.credentials.js')
 	]
 };

@@ -1,429 +1,239 @@
 import { createClient, RedisClientType } from 'redis';
-import { NodeOperationError } from 'n8n-workflow';
 import { RedisCredential } from '../types';
 
 export interface RedisConnectionConfig {
-	maxRetries: number;
-	retryDelay: number;
 	connectionTimeout: number;
-	healthCheckInterval: number;
-	gracefulShutdownTimeout: number;
 }
 
-export interface RedisHealthStatus {
-	isConnected: boolean;
-	isReady: boolean;
-	latency: number;
-	lastHealthCheck: number;
-	connectionUptime: number;
-	errorCount: number;
-	lastError?: string;
-}
-
+/**
+ * Simplified Redis Manager following TimedBuffer pattern
+ * Provides basic Redis operations with simple connection management
+ */
 export class RedisManager {
 	private client: RedisClientType | null = null;
 	private credentials: RedisCredential;
-	private config: RedisConnectionConfig;
-	private isConnecting: boolean = false;
-	private connectionAttempts: number = 0;
-	private lastConnectionTime: number = 0;
-	private healthStatus: RedisHealthStatus;
-	private healthCheckInterval: NodeJS.Timeout | null = null;
-	private reconnectTimer: NodeJS.Timeout | null = null;
-	private gracefulShutdown: boolean = false;
 
 	constructor(
 		credentials: RedisCredential,
 		config: Partial<RedisConnectionConfig> = {}
 	) {
 		this.credentials = credentials;
-		this.config = {
-			maxRetries: config.maxRetries || 3,
-			retryDelay: config.retryDelay || 1000,
-			connectionTimeout: config.connectionTimeout || 5000,
-			healthCheckInterval: config.healthCheckInterval || 30000,
-			gracefulShutdownTimeout: config.gracefulShutdownTimeout || 5000,
-			...config,
-		};
-
-		this.healthStatus = {
-			isConnected: false,
-			isReady: false,
-			latency: 0,
-			lastHealthCheck: 0,
-			connectionUptime: 0,
-			errorCount: 0,
-		};
+		// Config kept for compatibility but simplified
 	}
 
 	/**
-	 * Establish connection to Redis/Valkey with retry logic and health monitoring
+	 * Create and configure Redis client using simple credentials
 	 */
-	async connect(): Promise<void> {
-		if (this.client && this.healthStatus.isConnected) {
-			return;
-		}
+	private setupRedisClient(): RedisClientType {
+		const config: any = {
+			database: this.credentials.database,
+			username: this.credentials.user || undefined,
+			password: this.credentials.password || undefined,
+		};
 
-		if (this.isConnecting) {
-			// Wait for ongoing connection attempt
-			return this.waitForConnection();
-		}
-
-		this.isConnecting = true;
-
-		try {
-			await this.establishConnection();
-			await this.startHealthChecks();
-			this.connectionAttempts = 0;
-		} catch (error) {
-			this.isConnecting = false;
-			this.handleConnectionError(error);
-			throw error;
-		}
-	}
-
-	/**
-	 * Establish the actual Redis connection
-	 */
-	private async establishConnection(): Promise<void> {
-		// Support both Redis and Valkey
-		const clientConfig: any = {
-			socket: {
+		if (this.credentials.ssl) {
+			config.socket = {
 				host: this.credentials.host,
 				port: this.credentials.port,
-				tls: this.credentials.ssl === true,
-				connectTimeout: this.config.connectionTimeout,
-				reconnectStrategy: (retries: number) => {
-					if (retries >= this.config.maxRetries || this.gracefulShutdown) {
-						return false; // Stop reconnecting
-					}
-					return Math.min(retries * this.config.retryDelay, 5000);
-				},
-			},
-			database: this.credentials.database || 0,
-		};
-
-		// Add authentication if provided
-		if (this.credentials.username) {
-			clientConfig.username = this.credentials.username;
-		}
-		if (this.credentials.password) {
-			clientConfig.password = this.credentials.password;
+				tls: true,
+			};
+		} else {
+			config.socket = {
+				host: this.credentials.host,
+				port: this.credentials.port,
+			};
 		}
 
-		this.client = createClient(clientConfig);
-
-		// Set up event handlers
-		this.setupEventHandlers();
-
-		// Connect with timeout
-		const connectPromise = this.client.connect();
-		const timeoutPromise = new Promise((_, reject) => {
-			setTimeout(() => reject(new Error('Connection timeout')), this.config.connectionTimeout);
-		});
-
-		await Promise.race([connectPromise, timeoutPromise]);
-
-		this.lastConnectionTime = Date.now();
-		this.healthStatus.isConnected = true;
-		this.healthStatus.isReady = true;
-		this.healthStatus.connectionUptime = Date.now();
-		this.isConnecting = false;
+		return createClient(config);
 	}
 
 	/**
-	 * Set up Redis client event handlers
-	 */
-	private setupEventHandlers(): void {
-		if (!this.client) return;
-
-		this.client.on('connect', () => {
-			this.healthStatus.isConnected = true;
-			this.connectionAttempts = 0;
-		});
-
-		this.client.on('ready', () => {
-			this.healthStatus.isReady = true;
-		});
-
-		this.client.on('error', (error) => {
-			this.healthStatus.errorCount++;
-			this.healthStatus.lastError = error.message;
-			this.handleConnectionError(error);
-		});
-
-		this.client.on('end', () => {
-			this.healthStatus.isConnected = false;
-			this.healthStatus.isReady = false;
-			if (!this.gracefulShutdown) {
-				this.scheduleReconnect();
-			}
-		});
-
-		this.client.on('reconnecting', () => {
-			this.connectionAttempts++;
-		});
-	}
-
-	/**
-	 * Wait for ongoing connection attempt to complete
-	 */
-	private async waitForConnection(): Promise<void> {
-		const maxWait = this.config.connectionTimeout;
-		const startTime = Date.now();
-
-		while (this.isConnecting && (Date.now() - startTime) < maxWait) {
-			await new Promise(resolve => setTimeout(resolve, 100));
-		}
-
-		if (this.isConnecting) {
-			throw new Error('Connection attempt timed out');
-		}
-
-		if (!this.healthStatus.isConnected) {
-			throw new Error('Failed to establish connection');
-		}
-	}
-
-	/**
-	 * Handle connection errors with appropriate logging and recovery
-	 */
-	private handleConnectionError(error: any): void {
-		console.error('Redis connection error:', error.message);
-		
-		if (this.shouldRetry()) {
-			this.scheduleReconnect();
-		}
-	}
-
-	/**
-	 * Determine if reconnection should be attempted
-	 */
-	private shouldRetry(): boolean {
-		return (
-			!this.gracefulShutdown &&
-			this.connectionAttempts < this.config.maxRetries &&
-			!this.reconnectTimer
-		);
-	}
-
-	/**
-	 * Schedule automatic reconnection
-	 */
-	private scheduleReconnect(): void {
-		if (this.reconnectTimer || this.gracefulShutdown) return;
-
-		const delay = Math.min(
-			this.connectionAttempts * this.config.retryDelay,
-			5000
-		);
-
-		this.reconnectTimer = setTimeout(async () => {
-			this.reconnectTimer = null;
-			try {
-				await this.connect();
-			} catch (error) {
-				console.error('Reconnection failed:', error.message);
-			}
-		}, delay);
-	}
-
-	/**
-	 * Start periodic health checks
-	 */
-	private async startHealthChecks(): Promise<void> {
-		if (this.healthCheckInterval) {
-			clearInterval(this.healthCheckInterval);
-		}
-
-		this.healthCheckInterval = setInterval(async () => {
-			await this.performHealthCheck();
-		}, this.config.healthCheckInterval);
-
-		// Perform initial health check
-		await this.performHealthCheck();
-	}
-
-	/**
-	 * Perform health check with latency measurement
-	 */
-	private async performHealthCheck(): Promise<void> {
-		if (!this.client || !this.healthStatus.isConnected) {
-			return;
-		}
-
-		try {
-			const startTime = Date.now();
-			await this.client.ping();
-			const endTime = Date.now();
-
-			this.healthStatus.latency = endTime - startTime;
-			this.healthStatus.lastHealthCheck = endTime;
-			this.healthStatus.isReady = true;
-		} catch (error) {
-			this.healthStatus.isReady = false;
-			this.healthStatus.errorCount++;
-			this.healthStatus.lastError = error.message;
-		}
-	}
-
-	/**
-	 * Get current health status
-	 */
-	getHealthStatus(): RedisHealthStatus {
-		return {
-			...this.healthStatus,
-			connectionUptime: this.healthStatus.connectionUptime 
-				? Date.now() - this.healthStatus.connectionUptime 
-				: 0,
-		};
-	}
-
-	/**
-	 * Check if Redis is available for operations
-	 */
-	isAvailable(): boolean {
-		return (
-			this.client !== null &&
-			this.healthStatus.isConnected &&
-			this.healthStatus.isReady &&
-			!this.gracefulShutdown
-		);
-	}
-
-	/**
-	 * Get Redis client with availability check
+	 * Get Redis client, creating if needed
 	 */
 	getClient(): RedisClientType {
-		if (!this.isAvailable()) {
-			throw new NodeOperationError(
-				null as any,
-				'Redis connection is not available',
-				{ description: 'Redis client is not connected or ready for operations' }
-			);
+		if (!this.client) {
+			this.client = this.setupRedisClient();
 		}
-		return this.client!;
+		return this.client;
 	}
 
 	/**
-	 * Execute Redis operation with error handling and retries
+	 * Check if Redis connection is available
 	 */
-	async executeOperation<T>(
-		operation: (client: RedisClientType) => Promise<T>,
-		options: { retries?: number; timeout?: number } = {}
-	): Promise<T> {
-		const { retries = 1, timeout = 5000 } = options;
-		let lastError: Error;
-
-		for (let attempt = 0; attempt <= retries; attempt++) {
-			try {
-				if (!this.isAvailable()) {
-					await this.connect();
-				}
-
-				const client = this.getClient();
-				
-				// Execute with timeout
-				const operationPromise = operation(client);
-				const timeoutPromise = new Promise<never>((_, reject) => {
-					setTimeout(() => reject(new Error('Operation timeout')), timeout);
-				});
-
-				return await Promise.race([operationPromise, timeoutPromise]);
-
-			} catch (error) {
-				lastError = error;
-				
-				if (attempt < retries) {
-					// Wait before retry
-					await new Promise(resolve => 
-						setTimeout(resolve, Math.min(attempt * 1000, 3000))
-					);
-					
-					// Try to reconnect if connection was lost
-					if (!this.isAvailable()) {
-						try {
-							await this.connect();
-						} catch (connectError) {
-							// Continue to next retry
-						}
-					}
-				}
-			}
-		}
-
-		throw new NodeOperationError(
-			null as any,
-			`Redis operation failed after ${retries + 1} attempts: ${lastError!.message}`
-		);
+	isAvailable(): boolean {
+		return this.client !== null && this.client.isReady;
 	}
 
 	/**
-	 * Graceful shutdown with connection cleanup
+	 * Execute a Redis operation with connection management
+	 */
+	async executeOperation<T>(operation: (client: RedisClientType) => Promise<T>): Promise<T> {
+		const client = this.getClient();
+		
+		try {
+			// Connect if not already connected
+			if (!client.isOpen) {
+				await client.connect();
+			}
+
+			// Execute the operation
+			const result = await operation(client);
+			return result;
+
+		} catch (error: any) {
+			throw new Error(`Redis operation failed: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Read value from Redis
+	 */
+	async read(key: string): Promise<string | null> {
+		return this.executeOperation(async (client) => {
+			return await client.get(key);
+		});
+	}
+
+	/**
+	 * Write value to Redis
+	 */
+	async write(key: string, value: string, ttlSeconds?: number): Promise<void> {
+		return this.executeOperation(async (client) => {
+			if (ttlSeconds) {
+				await client.set(key, value, { EX: ttlSeconds });
+			} else {
+				await client.set(key, value);
+			}
+		});
+	}
+
+	/**
+	 * Delete key from Redis
+	 */
+	async delete(key: string): Promise<boolean> {
+		return this.executeOperation(async (client) => {
+			const result = await client.del(key);
+			return result > 0;
+		});
+	}
+
+	/**
+	 * Check if key exists in Redis
+	 */
+	async exists(key: string): Promise<boolean> {
+		return this.executeOperation(async (client) => {
+			const result = await client.exists(key);
+			return result > 0;
+		});
+	}
+
+	/**
+	 * Get multiple values from Redis
+	 */
+	async mget(keys: string[]): Promise<(string | null)[]> {
+		return this.executeOperation(async (client) => {
+			return await client.mGet(keys);
+		});
+	}
+
+	/**
+	 * Set multiple values in Redis
+	 */
+	async mset(keyValues: Record<string, string>): Promise<void> {
+		return this.executeOperation(async (client) => {
+			await client.mSet(keyValues);
+		});
+	}
+
+	/**
+	 * Increment a value in Redis
+	 */
+	async increment(key: string, increment: number = 1): Promise<number> {
+		return this.executeOperation(async (client) => {
+			return await client.incrBy(key, increment);
+		});
+	}
+
+	/**
+	 * Set expiration on a key
+	 */
+	async expire(key: string, seconds: number): Promise<boolean> {
+		return this.executeOperation(async (client) => {
+			const result = await client.expire(key, seconds);
+			return result === 1;
+		});
+	}
+
+	/**
+	 * Get keys matching a pattern
+	 */
+	async keys(pattern: string): Promise<string[]> {
+		return this.executeOperation(async (client) => {
+			return await client.keys(pattern);
+		});
+	}
+
+	/**
+	 * List operations
+	 */
+	async lRange(key: string, start: number, stop: number): Promise<string[]> {
+		return this.executeOperation(async (client) => {
+			return await client.lRange(key, start, stop);
+		});
+	}
+
+	async lPush(key: string, ...values: string[]): Promise<number> {
+		return this.executeOperation(async (client) => {
+			return await client.lPush(key, values);
+		});
+	}
+
+	async lTrim(key: string, start: number, stop: number): Promise<void> {
+		return this.executeOperation(async (client) => {
+			await client.lTrim(key, start, stop);
+		});
+	}
+
+	/**
+	 * Sorted set operations
+	 */
+	async zAdd(key: string, member: { score: number; value: string }): Promise<number> {
+		return this.executeOperation(async (client) => {
+			return await client.zAdd(key, member);
+		});
+	}
+
+	async zRemRangeByScore(key: string, min: number, max: number): Promise<number> {
+		return this.executeOperation(async (client) => {
+			return await client.zRemRangeByScore(key, min, max);
+		});
+	}
+
+	async zCard(key: string): Promise<number> {
+		return this.executeOperation(async (client) => {
+			return await client.zCard(key);
+		});
+	}
+
+	/**
+	 * Clean up Redis connection
 	 */
 	async cleanup(): Promise<void> {
-		this.gracefulShutdown = true;
-
-		// Clear timers
-		if (this.healthCheckInterval) {
-			clearInterval(this.healthCheckInterval);
-			this.healthCheckInterval = null;
-		}
-
-		if (this.reconnectTimer) {
-			clearTimeout(this.reconnectTimer);
-			this.reconnectTimer = null;
-		}
-
-		// Close Redis connection
-		if (this.client && this.healthStatus.isConnected) {
+		if (this.client) {
 			try {
-				await Promise.race([
-					this.client.quit(),
-					new Promise(resolve => 
-						setTimeout(resolve, this.config.gracefulShutdownTimeout)
-					),
-				]);
-			} catch (error) {
+				if (this.client.isOpen) {
+					await this.client.quit();
+				}
+			} catch (error: any) {
 				console.warn('Error during Redis cleanup:', error.message);
-				// Force disconnect if graceful shutdown fails
 				try {
 					await this.client.disconnect();
-				} catch (disconnectError) {
+				} catch (disconnectError: any) {
 					console.warn('Error forcing Redis disconnect:', disconnectError.message);
 				}
+			} finally {
+				this.client = null;
 			}
 		}
-
-		// Reset state
-		this.client = null;
-		this.healthStatus.isConnected = false;
-		this.healthStatus.isReady = false;
-		this.isConnecting = false;
-	}
-
-	/**
-	 * Force reconnection (useful for testing or manual recovery)
-	 */
-	async forceReconnect(): Promise<void> {
-		await this.cleanup();
-		this.gracefulShutdown = false;
-		this.connectionAttempts = 0;
-		await this.connect();
-	}
-
-	/**
-	 * Get connection statistics
-	 */
-	getConnectionStats(): {
-		connectionAttempts: number;
-		lastConnectionTime: number;
-		healthStatus: RedisHealthStatus;
-	} {
-		return {
-			connectionAttempts: this.connectionAttempts,
-			lastConnectionTime: this.lastConnectionTime,
-			healthStatus: this.getHealthStatus(),
-		};
 	}
 }
