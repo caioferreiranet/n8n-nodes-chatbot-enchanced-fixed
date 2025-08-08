@@ -19,16 +19,14 @@ export class ChatBotEnhanced implements INodeType {
 		displayName: 'ChatBot Enhanced',
 		name: 'chatBotEnhanced',
 		icon: 'file:chatbot-enhanced.svg',
-		group: ['transform', 'ai', 'communication'],
+		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Advanced chatbot functionality with smart rate limiting, message buffering, session management, and Redis integration for scalable conversation automation',
 		codex: {
-			categories: ['AI', 'Communication', 'Data & Storage'],
+			categories: ['Data & Storage'],
 			subcategories: {
-				'AI': ['Memory', 'Context Management', 'Conversation AI'],
-				'Communication': ['Chatbots', 'Messaging', 'User Interaction'],
-				'Data & Storage': ['Redis', 'Session Management', 'Cache']
+				'Data & Storage': ['Redis', 'Session Management', 'Cache', 'Message Processing']
 			},
 			resources: {
 				primaryDocumentation: [
