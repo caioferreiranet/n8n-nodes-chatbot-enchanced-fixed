@@ -104,19 +104,19 @@ export class ChatBotEnhanced implements INodeType {
 					{
 						name: 'Buffer Messages',
 						value: 'bufferMessages',
-						action: 'Buffer messages for human like responses',
+						action: 'Buffer message',
 						description: 'Collect multiple messages and flush after time delay',
 					},
 					{
 						name: 'Spam Detection',
 						value: 'spamDetection',
-						action: 'Detect and filter spam messages',
+						action: 'Spam detection',
 						description: 'Protect chatbot from spam and malicious content',
 					},
 					{
 						name: 'Rate Limit',
 						value: 'rateLimit',
-						action: 'Control message processing rate',
+						action: 'Rate limit',
 						description: 'Prevent message flooding with smart rate limiting',
 					},
 				],

@@ -3,17 +3,17 @@
 [![npm version](https://badge.fury.io/js/@trigidigital%2Fn8n-nodes-chatbot-enchanced.svg)](https://www.npmjs.com/package/@trigidigital/n8n-nodes-chatbot-enchanced)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-🚀 **Production-ready chatbot enhancement node** for n8n workflows with Redis/Valkey integration and **real-time trigger capabilities**.
+🚀 **Production-ready v1.0.0** chatbot enhancement node for n8n workflows with Redis/Valkey integration and **real-time trigger capabilities**.
 
-⚡ **High-performance architecture** supporting **100-200+ operations per second** with enterprise-grade error handling, streamlined outputs, and real-time analytics.
+⚡ **High-performance architecture** supporting **100-200+ operations per second** with enterprise-grade error handling, streamlined outputs, and lean codebase.
 
-🔥 **Key Features:**
-- 🛡️ **Smart Rate Limiting** with burst protection and penalty systems
-- 💾 **Message Buffering** with **🛡️ Advanced Anti-Spam Detection** (repeated text, flood protection, pattern matching)
-- 🚨 **Real-Time Redis Trigger** for instant workflow activation on key changes
-- 🎯 **Dedicated Operations**: Buffer Messages, Spam Detection, and Rate Limiting
-- 📊 **Streamlined Outputs**: Success, Spam, and Process streams for clean workflow management
-- 🔧 **Multi-Provider Support**: Redis, Valkey, and Upstash compatibility
+🔥 **Core Features:**
+- 💾 **Buffer Message**: Collect messages with human-like timing and basic anti-spam filtering
+- 🚨 **Spam detection**: Advanced content filtering with pattern matching and flood protection
+- ⏱️ **Rate Limit**: Smart request throttling with burst protection and adaptive penalties
+- 📡 **Real-Time Redis Trigger**: Instant workflow activation on Redis key changes
+- 📊 **3 Clean Outputs**: Success, Spam, and Process streams for organized workflow management
+- 🔧 **Multi-Provider Support**: Redis, Valkey (recommended), and Upstash compatibility
 
 [Installation](#installation)  
 [Operations](#operations)  
@@ -47,23 +47,32 @@ This package includes **two powerful nodes** for comprehensive chatbot managemen
 **Advanced message processing with intelligent anti-spam protection**
 
 #### 📋 Operations
-- **🛡️ Buffer Messages**: Collect multiple messages with human-like delays and built-in spam filtering
-- **🚨 Spam Detection**: Dedicated spam analysis with pattern matching and flood protection  
-- **⏱️ Rate Limiting**: Smart request throttling with burst protection and adaptive penalties
+- **💾 Buffer Message**: Collect messages with human-like delays and basic spam filtering
+- **🚨 Spam detection**: Dedicated spam analysis with pattern matching and flood protection  
+- **⏱️ Rate Limit**: Smart request throttling with burst protection and adaptive penalties
 
-#### 🔄 Streamlined Outputs (v0.1.11)
+#### 🔄 Streamlined Outputs (v1.0.0)
 The node provides **3 focused outputs** for clean workflow management:
 1. ✅ **Success**: Clean, processed messages and successful operations
 2. 🚨 **Spam**: Detected spam messages with detailed analysis and confidence scores
 3. ⚙️ **Process**: Status updates, buffered messages, and operational metadata
 
 ### 2. 🚨 ChatBot Enhanced - Trigger (Trigger Node) 
-**Real-time Redis/Valkey monitoring for instant workflow activation**
+**Real-time Redis/Valkey monitoring using native Redis Keyspace Notifications**
+
+#### 🎯 **Native Redis Technology - No Polling Required**
+This trigger leverages **Redis Keyspace Notifications**, a built-in Redis feature for real-time event monitoring:
+
+- **📡 Keyspace Notifications**: Uses Redis `CONFIG SET notify-keyspace-events KEA` for instant event delivery
+- **🔄 Pub/Sub Architecture**: Native Redis publish/subscribe mechanism (not custom polling/cron)
+- **⚡ Channel Patterns**: Subscribes to `__keyspace@{db}__:{pattern}` channels for targeted monitoring
+- **🎯 Zero Latency**: Events delivered within <100ms of actual Redis operations
+- **🚀 Enterprise-Grade**: Production-ready real-time data synchronization
 
 #### ⚡ Real-Time Capabilities
 - **🔍 Key Pattern Monitoring**: Track specific Redis key patterns (e.g., `chatbot:*`, `session:*`)
 - **📡 Event Type Filtering**: Monitor SET, DEL, EXPIRED, and EVICTED operations
-- **🛡️ Rate Limiting**: Built-in protection against event storms (100-1000 events/second)
+- **🛡️ Rate limiting**: Built-in protection against event storms (100-1000 events/second)
 - **🔄 Auto-Reconnection**: Resilient connection handling with exponential backoff
 - **📊 Value Retrieval**: Automatic value fetching for SET events and intelligent caching for DEL events
 
@@ -93,11 +102,32 @@ The node provides **3 focused outputs** for clean workflow management:
 ```
 
 **🔧 Production Requirements:**
-- **Redis Config**: `CONFIG SET notify-keyspace-events KEA`
+- **Redis Config**: `CONFIG SET notify-keyspace-events KEA` (automatically configured by trigger)
 - **Pattern Specificity**: Never use `*` wildcard in production
 - **Monitoring**: Track Redis CPU, n8n memory, and event rates
 - **Health Checks**: Implement trigger connectivity monitoring
 - **Circuit Breakers**: Stop triggers during Redis outages
+
+#### 🎯 **Why Redis Keyspace Notifications vs Traditional Polling?**
+
+| Method | **Redis Keyspace Notifications** | Traditional Polling/Cron |
+|--------|-----------------------------------|---------------------------|
+| **Latency** | <100ms real-time | 5-60 seconds delayed |
+| **CPU Usage** | Low (event-driven) | High (constant queries) |
+| **Network Traffic** | Minimal (only changes) | High (regular polls) |
+| **Accuracy** | 100% accurate events | Can miss rapid changes |
+| **Scalability** | Scales with events | Scales with poll frequency |
+| **Resource Efficiency** | ✅ Very efficient | ❌ Wasteful |
+
+**Technical Implementation:**
+```javascript
+// Redis automatically publishes to these channels:
+__keyspace@0__:chatbot:session:user123   // Channel
+"set"                                    // Message (event type)
+
+// Your trigger subscribes and receives instant notifications
+// No database polling, no missed events, no delays!
+```
 
 ### 🚀 Performance Specifications
 
@@ -109,11 +139,13 @@ The node provides **3 focused outputs** for clean workflow management:
 - **Scalability**: Supports Redis clusters and high-availability setups
 
 #### **Trigger Node (ChatBot Enhanced - Trigger)**  
-- **Event Latency**: <100ms from Redis change to n8n trigger
-- **Throughput**: 100-1000 events/second (configurable rate limiting)
+- **Event Latency**: <100ms from Redis change to n8n trigger (thanks to Keyspace Notifications)
+- **Throughput**: 100-1000 events/second (configurable rate limiting with token bucket)
 - **Memory Usage**: ~10MB base + ~1KB per cached key value
-- **Connection Count**: 2 Redis connections per trigger instance
+- **Connection Architecture**: 2 dedicated Redis connections (main client + pub/sub subscriber)
 - **Reliability**: Auto-reconnection with exponential backoff (5 attempts, max 30s delay)
+- **Technology**: Native Redis Keyspace Notifications (`notify-keyspace-events KEA`)
+- **Channel Subscription**: Pattern-based `__keyspace@{db}__:{pattern}` monitoring
 
 #### **Provider-Specific Performance**
 
@@ -135,12 +167,14 @@ The node provides **3 focused outputs** for clean workflow management:
 - **Redis Enterprise**: Production-grade with advanced features
 - **Self-Hosted**: Any Redis 6.0+ installation
 
-#### 2. 🟦 **Valkey** (Version 7.2+) - **RECOMMENDED** 
-- **Performance**: ~15-20% better memory efficiency vs Redis
-- **Open Source**: 100% open source fork of Redis 7.2
-- **Compatibility**: Drop-in Redis replacement
+#### 2. 🟦 **Valkey** (Version 7.2+) - **🏆 HIGHLY RECOMMENDED FOR SELF-HOSTED** 
+- **Superior Performance**: ~15-20% better memory efficiency vs Redis
+- **Trigger Stability**: More stable for real-time Redis trigger operations
+- **Open Source**: 100% open source fork of Redis 7.2 
+- **Drop-in Replacement**: Perfect Redis compatibility with better performance
 - **Future-Proof**: No licensing concerns like Redis 7.4+
-- **Community**: Active development and support
+- **Active Development**: Community-driven with frequent stability improvements
+- **Production Ready**: Optimized for enterprise workloads and trigger reliability
 
 #### 3. ☁️ **Upstash** - **CLOUD RECOMMENDED**
 - **Serverless Redis**: Global edge locations with sub-10ms latency
@@ -151,25 +185,7 @@ The node provides **3 focused outputs** for clean workflow management:
 
 ### 🔧 Connection Configuration Options
 
-#### **Method 1: Connection String (Recommended)**
-```bash
-# Basic Connection
-redis://localhost:6379/0
-
-# With Password
-redis://:mypassword@redis.example.com:6379/0
-
-# With Username & Password (Redis 6.0+)
-redis://username:password@redis.example.com:6379/0
-
-# SSL/TLS Connection
-rediss://username:password@secure-redis.com:6380/0
-
-# Upstash Connection
-rediss://:your_upstash_password@your-endpoint.upstash.io:6380
-```
-
-#### **Method 2: Individual Fields**
+#### **Individual Fields**
 - **Host**: Redis server hostname/IP
 - **Port**: Redis server port (default: 6379)
 - **Database**: Redis database number (0-15)
@@ -269,9 +285,9 @@ All credential configurations include **automatic connection testing**:
 1. **Drag Node**: Add "ChatBot Enhanced" to your workflow
 2. **Select Credentials**: Choose your Redis credentials
 3. **Choose Operation**: 
-   - `Buffer Messages` - For human-like response timing
-   - `Spam Detection` - For content filtering
-   - `Rate Limiting` - For request throttling
+   - `Buffer Message` - For human-like response timing
+   - `Spam detection` - For content filtering
+   - `Rate Limit` - For request throttling
 4. **Configure Parameters** (see examples below)
 5. **Connect Outputs**: Success, Spam, and Process outputs
 
@@ -281,25 +297,26 @@ All credential configurations include **automatic connection testing**:
 3. **Configure Monitoring**:
    - **Key Pattern**: `chatbot:session:*` (be specific!)
    - **Event Types**: `["SET", "DEL"]` (only what you need)
-   - **Rate Limiting**: Keep enabled (100 events/sec)
+   - **Rate limiting**: Keep enabled (100 events/sec)
 4. **Test Trigger**: Create a test key in Redis
 
 ### 🎆 Complete Workflow Examples
 
 #### **Example 1: Human-Like Chatbot with Spam Protection**
 ```mermaid
-Webhook → ChatBot Enhanced (Buffer Messages) → AI Processing
+Webhook → ChatBot Enhanced (Buffer message) → AI Processing
                     ↓ (Spam Output)
                  Spam Handler
 ```
 
 **Configuration:**
 ```javascript
-// ChatBot Enhanced Node - Buffer Messages
+// ChatBot Enhanced Node - Buffer message Operation
 Session Key: {{$json.from}}              // User ID from webhook
 Message Content: {{$json.message}}        // User message
 Buffer Time: 15                           // 15-second human-like delay
 Buffer Size: 50                           // Max 50 messages per batch
+Buffer Pattern: "Collect & Send All"      // Send all messages together
 Anti-Spam Detection: "Repeated Text"      // Basic spam filtering
 
 // Connect Outputs:
@@ -328,18 +345,18 @@ Include Metadata: true                    // For debugging
 
 #### **Example 3: Advanced Content Filtering Pipeline**
 ```mermaid
-Webhook → Spam Detection → Rate Limiting → Content Processing
+Webhook → Spam detection → Rate limit → Content Processing
 ```
 
 **Configuration:**
 ```javascript
-// Node 1: ChatBot Enhanced - Spam Detection
+// Node 1: ChatBot Enhanced - Spam detection
 Detection Type: "Combined Detection"      // Multiple methods
 Action: "Block"                          // Block spam completely
 Similarity Threshold: 85                 // 85% similarity = spam
 Predefined Patterns: ["URLs", "Emails"]  // Block URLs and emails
 
-// Node 2: ChatBot Enhanced - Rate Limiting  
+// Node 2: ChatBot Enhanced - Rate limit Operation  
 Limit Type: "Per User"                   // Individual user limits
 Algorithm: "Token Bucket"               // Allow message bursts
 Max Requests: 20                         // 20 messages per minute
@@ -353,7 +370,7 @@ Burst Limit: 5                          // Allow 5-message bursts
 // Problem: Users send multiple messages rapidly
 // Solution: Buffer messages for 10 seconds, then respond once
 
-Buffer Messages Configuration:
+Buffer message Configuration:
 {
   sessionKey: "{{$json.from}}",           // WhatsApp number
   messageContent: "{{$json.body}}",        // Message text
@@ -374,7 +391,7 @@ Buffer Messages Configuration:
 // Problem: Players send spam and toxic content
 // Solution: Multi-layer spam detection with automatic penalties
 
-Spam Detection Configuration:
+Spam detection Configuration:
 {
   detectionType: "combined",              // All detection methods
   spamAction: "block",                   // Block spam messages
@@ -384,7 +401,7 @@ Spam Detection Configuration:
   floodTimeWindow: 60
 }
 
-Rate Limiting Configuration:
+Rate limit Configuration:
 {
   limitType: "smart_adaptive",           // Learns user patterns
   maxRequests: 30,                       // 30 messages per minute
@@ -411,6 +428,195 @@ Trigger Configuration:
 // EXPIRED → Ticket timeout → Escalate to supervisor  
 // DEL → Ticket resolved → Send satisfaction survey
 ```
+
+### 🚀 Advanced Chatbot Scenarios - Redis Trigger + Built-in Redis Node
+
+**💡 Philosophy**: Keep this custom node simple while leveraging n8n's built-in Redis node for complex logic. This approach helps users learn in-memory database concepts without overwhelming custom node complexity.
+
+#### **Scenario 1: Auto Follow-Up Based on Phone Number Sessions**
+```mermaid
+Redis Node (SET with TTL) → Redis Trigger (EXPIRED) → WhatsApp Follow-up
+```
+
+**Workflow Design:**
+```javascript
+// Step 1: User starts conversation - Use built-in Redis Node
+// Node: Redis (Built-in n8n node)
+Action: "Set"
+Key: "session:phone:{{$json.from}}"        // e.g., session:phone:+628123456789  
+Value: JSON.stringify({
+  lastMessage: "{{$json.body}}",
+  timestamp: "{{new Date().toISOString()}}",
+  stage: "awaiting_response"
+})
+TTL: 120                                   // 2 minutes auto-expire
+
+// Step 2: Monitor session expiry - Use ChatBot Enhanced Trigger
+// Node: ChatBot Enhanced - Trigger  
+Key Pattern: "session:phone:*"
+Event Types: ["EXPIRED"]                   // Only expired events
+Max Events Per Second: 50
+
+// Step 3: Auto follow-up logic - Use built-in nodes
+// When trigger fires with expired session:
+// → Check if user is still active with Redis GET
+// → Send follow-up message via WhatsApp/Telegram
+// → Create new session with different TTL
+```
+
+**Complete Workflow Example:**
+```javascript
+[Webhook: New WhatsApp Message] 
+    ↓
+[Built-in Redis Node: SET session with 2min TTL]
+    ↓  
+[ChatBot Enhanced: Process message with buffer/spam detection]
+    ↓
+[Send Response via WhatsApp Node]
+
+// Parallel workflow triggered by expiry:
+[ChatBot Enhanced - Trigger: Monitor session:phone:*]
+    ↓ (EXPIRED event)
+[Built-in Redis Node: GET user profile for context]
+    ↓
+[IF: User hasn't responded AND conversation unfinished]
+    ↓
+[WhatsApp Node: Send follow-up message]
+    ↓
+[Built-in Redis Node: SET new session with 5min TTL]
+```
+
+#### **Scenario 2: Smart Session Management with Redis TTL**
+```javascript
+// Learning Opportunity: Master Redis TTL patterns for chatbots
+
+// Phase 1: Initial Contact (5 min TTL)
+Key: "chat:initial:+628123456789"
+Value: { stage: "greeting", attempts: 1 }
+TTL: 300 seconds
+
+// Phase 2: Active Conversation (30 min TTL) 
+Key: "chat:active:+628123456789"
+Value: { stage: "conversation", context: "support_request" }
+TTL: 1800 seconds
+
+// Phase 3: Dormant Session (24 hours TTL)
+Key: "chat:dormant:+628123456789" 
+Value: { stage: "dormant", lastActivity: timestamp }
+TTL: 86400 seconds
+
+// Trigger monitors ALL patterns:
+Key Pattern: "chat:*:*"
+Event Types: ["SET", "EXPIRED"]
+
+// Business Logic via Built-in Redis + IF Nodes:
+// EXPIRED chat:initial:* → Send "Still need help?" message
+// EXPIRED chat:active:* → Move to dormant state  
+// EXPIRED chat:dormant:* → Archive conversation history
+// SET chat:active:* → Cancel dormant timers
+```
+
+#### **Scenario 3: E-commerce Cart Abandonment Recovery**
+```mermaid
+Shopping Flow → Redis TTL → Auto Recovery → Conversion Tracking
+```
+
+**Implementation:**
+```javascript
+// Step 1: Cart Creation (Built-in Redis Node)
+Key: "cart:{{$json.userId}}:{{$json.cartId}}"
+Value: {
+  items: [/* cart items */],
+  total: 150000,
+  stage: "active",
+  phone: "+628123456789"
+}
+TTL: 1800  // 30 minutes
+
+// Step 2: Trigger Setup (ChatBot Enhanced - Trigger)
+Key Pattern: "cart:*:*"
+Event Types: ["EXPIRED", "SET", "DEL"]
+
+// Step 3: Recovery Logic (Built-in nodes)
+// EXPIRED → Check if cart value > 100k → Send discount offer
+// SET → Reset abandonment timer 
+// DEL → Conversion completed, send thank you message
+
+// Advanced: Multi-stage abandonment
+// 15 min: "Complete your purchase for 5% discount"
+// 30 min: "10% discount expires in 5 minutes!"  
+// 60 min: "We've saved your cart, return anytime"
+```
+
+#### **Scenario 4: Customer Service Priority Queue**
+```javascript
+// Priority-based customer routing using Redis scoring
+
+// High Priority (VIP customers) - 1 hour response time
+Key Pattern: "support:vip:*"
+TTL: 3600
+Trigger Action: Immediate supervisor notification
+
+// Regular Priority - 4 hour response time  
+Key Pattern: "support:regular:*"
+TTL: 14400
+Trigger Action: Agent assignment
+
+// Low Priority (FAQ-level) - 24 hour response time
+Key Pattern: "support:faq:*" 
+TTL: 86400
+Trigger Action: Auto-response with FAQ links
+
+// Escalation Logic:
+// EXPIRED support:vip:* → Emergency escalation + SMS alert
+// EXPIRED support:regular:* → Move to priority queue
+// EXPIRED support:faq:* → Archive or auto-close
+```
+
+#### **Scenario 5: Multi-Channel Session Synchronization**
+```javascript
+// Sync conversations across WhatsApp, Telegram, Web Chat
+
+// Unified Session Key Pattern
+Key Pattern: "unified:{{phone_number}}:*"
+
+// Channel-specific keys with same phone number:
+"unified:+628123456789:whatsapp"    // TTL: 30 min
+"unified:+628123456789:telegram"    // TTL: 30 min  
+"unified:+628123456789:webchat"     // TTL: 15 min
+
+// Trigger monitors all channels:
+Key Pattern: "unified:*:*"
+Event Types: ["SET", "EXPIRED"]
+
+// Smart routing logic:
+// SET on any channel → Extend TTL on all other channels
+// EXPIRED on primary channel → Switch context to active channel
+// Multiple SET events → Detect channel switching, maintain context
+```
+
+### 🎓 Learning Redis In-Memory Database Concepts
+
+**Why This Approach Works:**
+1. **🎯 Focused Custom Node**: Only handles chatbot-specific features (buffer, spam, triggers)
+2. **🧠 Redis Learning**: Users master Redis TTL, patterns, and data structures with built-in nodes
+3. **🔄 Flexibility**: Mix and match Redis operations without custom node limitations
+4. **📚 Skill Development**: Users learn enterprise-level in-memory database patterns
+
+**Redis Concepts You'll Master:**
+- **TTL Management**: Auto-expiring keys for session management
+- **Key Pattern Design**: Hierarchical naming for organized data
+- **Pub/Sub Events**: Real-time notifications via Keyspace events  
+- **Data Structures**: JSON storage, counters, sets for complex logic
+- **Memory Optimization**: Efficient key naming and cleanup strategies
+
+**Built-in Redis Node Operations to Combine:**
+- `GET/SET` - Basic key-value operations
+- `EXPIRE/TTL` - Time-based session management  
+- `EXISTS` - Conditional logic branching
+- `INCR/DECR` - Counters for rate limiting
+- `HGET/HSET` - Hash operations for user profiles
+- `SADD/SMEMBERS` - Sets for user groups/tags
 
 ### 🛠 Configuration Best Practices
 
@@ -542,9 +748,9 @@ Message Content: {{[$json.text, $json.attachment?.caption].filter(Boolean).join(
 Spam Action: {{$json.isFirstTimeUser ? "warn" : "block"}}
 ```
 
-### 🎯 Message Buffering + 🛡️ Anti-Spam - Human-Like Response (ENHANCED in v0.1.4!)
+### 🎯 Message Buffering + 🛡️ Anti-Spam - Human-Like Response (v1.0.0)
 
-⏱️ **Revolutionary TimedBuffer Implementation with Built-in Anti-Spam Protection** - The FLAGSHIP feature for human-like chatbot responses:
+⏱️ **Optimized TimedBuffer Implementation with Built-in Anti-Spam Protection** - The core feature for human-like chatbot responses:
 
 #### 🧠 How It Works (TimedBuffer Logic + Anti-Spam)
 ```javascript
@@ -575,7 +781,7 @@ After 10 seconds              → Master Execution: Return CLEAN MESSAGES only!
 
 #### ⚙️ Configuration Examples
 
-#### **Buffer Messages Operation**
+#### **Buffer message Operation**
 ```javascript
 // Basic Message Buffering
 Session Key: {{$json.userId}}
@@ -588,9 +794,9 @@ Buffer Pattern: "collect_send"           // send all at once
 Anti-Spam Detection: "Repeated Text"     // Basic spam detection
 ```
 
-#### **Spam Detection Operation (Dedicated)**
+#### **Spam detection Operation (Dedicated)**
 ```javascript
-// Advanced Spam Detection
+// Advanced Spam detection
 Session Key: {{$json.userId}}
 Message Content: {{$json.message}}
 Detection Type: "Combined Detection"     // Multiple methods
@@ -601,9 +807,9 @@ Flood Time Window: 60                    // seconds
 Predefined Patterns: ["URLs", "Emails"]  // Built-in pattern detection
 ```
 
-#### **Rate Limiting Operation**
+#### **Rate limit Operation**
 ```javascript
-// Smart Rate Limiting
+// Smart Rate limit
 Session Key: {{$json.userId}}
 Limit Type: "Per User"                   // or "Global", "Smart Adaptive"
 Algorithm: "Token Bucket"               // Allow bursts
@@ -618,7 +824,7 @@ Burst Limit: 15                          // max burst size
 Key Monitoring: "Choose Key"             // Never use "Track All" in production
 Key Pattern: "chatbot:session:*"         // Specific pattern
 Event Types: ["SET", "DEL"]              // Only needed events
-Rate Limiting: true                      // Always enabled
+Rate limiting: true                      // Always enabled
 Max Events Per Second: 100               // Conservative limit
 
 // Advanced Options
@@ -643,7 +849,7 @@ Include Event Metadata: true             // For debugging
 
 #### 📊 Response Types by Operation
 
-#### **Buffer Messages Responses**
+#### **Buffer message Responses**
 ```json
 // Buffered (Chat 2,3,4...)
 {
@@ -685,7 +891,7 @@ Include Event Metadata: true             // For debugging
 }
 ```
 
-#### **Spam Detection Responses**
+#### **Spam detection Responses**
 ```json
 // Spam Detected
 {
@@ -709,7 +915,7 @@ Include Event Metadata: true             // For debugging
 }
 ```
 
-#### **Rate Limiting Responses**
+#### **Rate limit Responses**
 ```json
 // Request Allowed
 {
@@ -751,16 +957,11 @@ Include Event Metadata: true             // For debugging
 
 ### 🏗️ Architecture & Performance
 
-**Multi-Manager Architecture (Enhanced v0.1.4):**
+**Lean Architecture (v1.0.0):**
 - 🔧 **RedisManager**: Connection handling with auto-retry and health checks
-- 🛡️ **RateLimiter**: Sliding window with burst detection and penalties
-- 💾 **SessionManager**: Context storage with TTL and cleanup
-- 📦 **MessageBuffer**: Time/size-based buffering with **🛡️ integrated anti-spam detection**
-- **🆕 SpamDetector**: Hash-based similarity detection, flood protection, pattern matching
-- 🧠 **SmartMemory**: Conversation and FAQ storage with compression
-- 🔀 **MessageRouter**: Multi-channel routing with load balancing
-- 👤 **UserStorage**: Profile and preference management
-- 📊 **AnalyticsTracker**: Real-time metrics with histogram generation
+- 🛡️ **SpamDetector**: Hash-based similarity detection, flood protection, pattern matching
+- ⏱️ **RateLimiter**: Token bucket and sliding window algorithms with penalties
+- 🚨 **RedisTriggerManager**: Real-time keyspace notification monitoring with event filtering
 
 **Performance Optimizations:**
 - Connection pooling for high-volume scenarios
@@ -779,42 +980,39 @@ Include Event Metadata: true             // For debugging
 
 ## Version history
 
-### 0.1.11 (Current) - Operation Specialization & Redis Trigger Integration
+### 1.0.0 (Current) - Production-Ready Stable Release
 
-#### 🎯 **DEDICATED OPERATIONS ARCHITECTURE**
-- **Specialized Operations**: Buffer Messages, Spam Detection, and Rate Limiting as distinct operations
-- **Streamlined Outputs**: 3 focused outputs (Success, Spam, Process) for clean workflow routing
-- **Operation-Specific Configuration**: Each operation has dedicated parameters and validation
-- **Enhanced Error Handling**: Operation-specific error messages and recovery strategies
+#### 🎯 **PRODUCTION-READY ARCHITECTURE**
+- **Lean Codebase**: 56% size reduction by removing unused enterprise features
+- **Focused Operations**: Buffer message, spam detection, and rate limiting as core operations
+- **Streamlined Outputs**: 3 clean outputs (Success, Spam, Process) for organized workflows
+- **Optimized Performance**: Production-ready for 100-200+ operations per second
 
-#### 🚨 **REDIS REAL-TIME TRIGGER NODE** 
-- **New Trigger Node**: `ChatBot Enhanced - Trigger` for real-time Redis monitoring
-- **Keyspace Notifications**: Monitor Redis key changes with <100ms latency
-- **Event Filtering**: SET, DEL, EXPIRED, and EVICTED event type selection
-- **Pattern Matching**: Advanced glob pattern support for key monitoring
-- **Rate Limited**: Built-in protection against event storms (100-1000 events/sec)
-- **Auto-Reconnection**: Resilient connection handling with exponential backoff
-- **Value Retrieval**: Automatic value fetching and intelligent caching
-- **Production Ready**: Comprehensive error handling and performance monitoring
+#### 🚨 **REDIS KEYSPACE NOTIFICATIONS TRIGGER** 
+- **Native Redis Technology**: Uses Redis `notify-keyspace-events KEA` for real-time monitoring
+- **Pub/Sub Architecture**: Dedicated subscriber connection to `__keyspace@{db}__:{pattern}` channels
+- **Zero-Polling Design**: Event-driven notifications (no database polling/cron jobs required)
+- **Sub-100ms Latency**: Instant workflow activation on Redis key changes
+- **Event Type Filtering**: SET, DEL, EXPIRED, and EVICTED operations with smart filtering
+- **Pattern Matching**: Advanced glob pattern support (`*`, `?`, `**`) for targeted monitoring
+- **Enterprise Reliability**: Auto-reconnection, rate limiting, and value caching
+- **Production Ready**: Comprehensive error handling and performance optimization
 
-#### 🛡️ **ENHANCED ANTI-SPAM SYSTEM**
-- **Multiple Detection Types**: Repeated content, flood protection, pattern matching, combined detection
-- **Configurable Actions**: Block, delay, mark, or warn on spam detection
-- **Pattern Library**: Built-in detection for URLs, emails, phone numbers, excessive caps
-- **Custom Patterns**: Support for user-defined regex patterns
-- **Performance Optimized**: Hash-based similarity detection with Redis state persistence
-- **Detailed Analytics**: Comprehensive spam statistics and confidence scoring
+#### 🛡️ **COMPREHENSIVE SPAM PROTECTION**
+- **Multiple Detection**: Repeated content, flood protection, pattern matching
+- **Configurable Actions**: Block, delay, mark, or warn spam messages
+- **Pattern Library**: Built-in detection for URLs, emails, phone numbers
+- **Custom Patterns**: User-defined regex pattern support
+- **Hash-Based Performance**: Efficient similarity detection with Redis persistence
 
-#### 🔧 **ADVANCED RATE LIMITING**
-- **Multiple Algorithms**: Token bucket, sliding window, fixed window support
-- **Adaptive Strategies**: Per-user, per-session, global, and smart adaptive limiting
-- **Penalty System**: Automatic penalty application for limit violations
-- **Burst Protection**: Configurable burst limits for token bucket algorithm
-- **Statistical Analysis**: Comprehensive rate limiting metrics and reporting
+#### ⏱️ **SMART RATE LIMITING**
+- **Token Bucket & Sliding Window**: Multiple algorithm support
+- **Per-User/Global Limits**: Flexible limiting strategies
+- **Penalty System**: Automatic violation penalties
+- **Burst Protection**: Configurable burst limits
 
-#### ✨ **DEVELOPER EXPERIENCE IMPROVEMENTS**
-- **Better Parameter Organization**: Grouped and context-aware parameter display
-- **Enhanced Validation**: Real-time parameter validation with helpful error messages
-- **Comprehensive Documentation**: Detailed parameter descriptions with examples
-- **Testing Support**: Built-in connection testing and configuration validation
-- **Debug Information**: Detailed metadata output for troubleshooting
+#### ✨ **DEVELOPER EXPERIENCE**
+- **Clear Parameter Organization**: Intuitive parameter grouping
+- **Real-Time Validation**: Instant parameter validation with helpful errors
+- **Built-In Testing**: Connection testing and configuration validation
+- **Debug Support**: Comprehensive metadata for troubleshooting
