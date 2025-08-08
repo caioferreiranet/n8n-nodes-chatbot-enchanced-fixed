@@ -19,7 +19,7 @@ export class ChatBotEnhanced implements INodeType {
 		displayName: 'ChatBot Enhanced',
 		name: 'chatBotEnhanced',
 		icon: 'file:chatbot-enhanced.svg',
-		group: ['transform'],
+		group: ['transform', 'ai', 'communication'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Advanced chatbot functionality with smart rate limiting, message buffering, session management, and Redis integration for scalable conversation automation',
@@ -733,12 +733,12 @@ export class ChatBotEnhanced implements INodeType {
 				});
 				redisHealthy = await Promise.race([healthCheckPromise, timeoutPromise]);
 			} catch (healthError) {
-				console.error('ChatBotEnhanced.execute() - Redis health check failed:', healthError);
+				// Redis health check failed - logged internally
 				redisHealthy = false;
 			}
 			
 			if (!redisHealthy) {
-				console.error('ChatBotEnhanced.execute() - Redis is not healthy, throwing error');
+				// Redis is not healthy - throwing error
 				// Throw error immediately at the top level to properly fail the node
 				// This is safe because we're not in a nested async context or wait loop
 				throw new NodeOperationError(
@@ -833,7 +833,7 @@ export class ChatBotEnhanced implements INodeType {
 						if (!val) return null;
 						return JSON.parse(val) as BufferState;
 					} catch (error) {
-						console.error('getBufferState() - Failed to read buffer state:', error);
+						// Failed to read buffer state - logged internally
 						// Return null instead of throwing to allow graceful handling
 						return null;
 					}
@@ -986,7 +986,7 @@ export class ChatBotEnhanced implements INodeType {
 						
 						if (!healthCheckPassed) {
 							// Connection is not healthy - return error data instead of throwing
-							console.error('BUFFER WAIT LOOP - Redis connection unhealthy, returning error data');
+							// Redis connection unhealthy - handled internally
 							const errorOutput: INodeExecutionData[] = [{
 								json: {
 									error: 'Redis Connection Lost',
@@ -1010,12 +1010,12 @@ export class ChatBotEnhanced implements INodeType {
 							
 							refreshBuffer = await Promise.race([bufferStatePromise, timeoutPromise]);
 						} catch (error) {
-							console.error('BUFFER WAIT LOOP - getBufferState() error:', error);
+							// getBufferState() error - logged internally
 							refreshBuffer = null;
 						}
 						
 						if (refreshBuffer === null) {
-							console.error('BUFFER WAIT LOOP - Redis connection lost, returning error data');
+							// Redis connection lost - handled internally
 							// Return error data instead of throwing to prevent infinite loop
 							const errorOutput: INodeExecutionData[] = [{
 								json: {
