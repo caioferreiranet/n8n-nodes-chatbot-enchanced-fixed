@@ -245,7 +245,7 @@ export class AnalyticsTracker {
 						});
 						
 					} catch (error) {
-						console.warn('Failed to parse metric:', error.message);
+						
 					}
 				}
 			}
@@ -314,7 +314,7 @@ export class AnalyticsTracker {
 						}
 					}
 				} catch (error) {
-					console.warn(`Failed to process metrics key ${key}:`, error.message);
+					
 				}
 			}
 
@@ -369,7 +369,7 @@ export class AnalyticsTracker {
 					}
 
 				} catch (error) {
-					console.warn(`Failed to cleanup metrics key ${key}:`, error.message);
+					
 				}
 			}
 
@@ -459,7 +459,7 @@ export class AnalyticsTracker {
 				await pipeline.exec();
 			});
 		} catch (error) {
-			console.error('Failed to flush metrics buffer:', error.message);
+			
 			// Put metrics back in buffer for retry
 			this.metricBuffer.unshift(...metricsToFlush);
 		}

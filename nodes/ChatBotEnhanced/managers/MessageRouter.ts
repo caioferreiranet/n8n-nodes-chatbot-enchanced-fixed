@@ -265,7 +265,7 @@ export class MessageRouter {
 					const rule = JSON.parse(ruleJson);
 					rules.push(rule);
 				} catch (error) {
-					console.warn('Failed to parse routing rule:', error.message);
+					
 				}
 			}
 
@@ -382,7 +382,7 @@ export class MessageRouter {
 			return contentLower === condition;
 
 		} catch (error) {
-			console.warn(`Failed to match rule ${rule.name}:`, error.message);
+			
 			return false;
 		}
 	}
@@ -428,7 +428,7 @@ export class MessageRouter {
 						);
 					} else {
 						failed.push(channel);
-						console.error(`Failed to deliver to channel ${channel}:`, error.message);
+						
 					}
 				}
 			}
@@ -455,7 +455,7 @@ export class MessageRouter {
 			});
 
 		} catch (error) {
-			console.error('Failed to handle incoming message:', error.message);
+			
 		}
 	}
 

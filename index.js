@@ -4,6 +4,7 @@
 module.exports = {
 	// Export all nodes
 	nodes: [
-		require('./dist/nodes/ChatBotEnhanced/ChatBotEnhanced.node.js')
+		require('./dist/nodes/ChatBotEnhanced/ChatBotEnhanced.node.js'),
+		require('./dist/nodes/ChatBotEnhanced/ChatBotEnhancedRedisTrigger.node.js')
 	]
 };

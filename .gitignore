@@ -33,6 +33,7 @@ Thumbs.db
 *~
 
 # Development & Testing (EXCLUDE ALL)
+nodes/ChatBotEnhanced/__tests__/
 tests/
 docs/
 .bmad-core/

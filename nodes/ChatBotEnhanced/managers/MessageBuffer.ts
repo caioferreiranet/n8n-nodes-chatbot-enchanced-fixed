@@ -107,7 +107,7 @@ export class MessageBuffer {
 				action: 'block',
 				userId: 'default',
 				sessionId: 'default',
-				keyPrefix: `${this.keyPrefix}_spam`,
+				keyPrefix: `${this.keyPrefix}:spam`,
 				...this.config.spamDetectionConfig
 			};
 			this.spamDetector = new SpamDetector(this.redisManager, spamConfig);
@@ -338,7 +338,7 @@ export class MessageBuffer {
 						}
 					}
 				} catch (error) {
-					console.warn(`Failed to parse buffer state from key ${key}:`, error.message);
+					
 				}
 			}
 
@@ -454,7 +454,7 @@ export class MessageBuffer {
 		try {
 			return JSON.parse(data);
 		} catch (error) {
-			console.warn(`Failed to parse buffer state for ${bufferId}:`, error.message);
+			
 			return null;
 		}
 	}
@@ -575,7 +575,7 @@ export class MessageBuffer {
 			try {
 				await this.flush(bufferId, trigger);
 			} catch (error) {
-				console.error(`Failed to flush buffer ${bufferId}:`, error.message);
+				
 			}
 		});
 	}
@@ -601,7 +601,7 @@ export class MessageBuffer {
 			try {
 				await this.flush(bufferId, 'time');
 			} catch (error) {
-				console.error(`Failed to flush buffer ${bufferId} on timer:`, error.message);
+				
 			}
 		}, delay);
 
@@ -765,7 +765,7 @@ export class MessageBuffer {
 					action: 'block',
 					userId: 'default',
 					sessionId: 'default',
-					keyPrefix: `${this.keyPrefix}_spam`,
+					keyPrefix: `${this.keyPrefix}:spam`,
 					...this.config.spamDetectionConfig
 				};
 				this.spamDetector = new SpamDetector(this.redisManager, fullSpamConfig);

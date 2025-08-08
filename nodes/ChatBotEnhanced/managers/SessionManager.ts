@@ -143,7 +143,7 @@ export class SessionManager {
 			try {
 				return this.deserializeSession(data);
 			} catch (error) {
-				console.warn(`Failed to deserialize session ${sessionId}:`, error.message);
+				
 				// Clean up corrupted session
 				await client.del(key);
 				return null;
@@ -316,7 +316,7 @@ export class SessionManager {
 						}
 					}
 				} catch (error) {
-					console.warn(`Failed to deserialize session from key ${key}:`, error.message);
+					
 				}
 			}
 
@@ -418,7 +418,7 @@ export class SessionManager {
 			try {
 				await this.cleanup();
 			} catch (error) {
-				console.warn('Session cleanup failed:', error.message);
+				
 			}
 		}, this.config.cleanupInterval * 1000);
 	}

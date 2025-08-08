@@ -11,18 +11,22 @@ export interface RedisConnectionConfig {
  */
 export class RedisManager {
 	private client: RedisClientType | null = null;
-	private credentials: RedisCredential;
+	protected credentials: RedisCredential;
+	private connectionLost = false;
+	private lastHealthCheck = 0;
+	private readonly HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
 
 	constructor(
 		credentials: RedisCredential,
 		config: Partial<RedisConnectionConfig> = {}
 	) {
 		this.credentials = credentials;
-		// Config kept for compatibility but simplified
+		// Initialize Redis client immediately
+		this.client = this.setupRedisClient();
 	}
 
 	/**
-	 * Create and configure Redis client using simple credentials
+	 * Create and configure Redis client with anti-infinite-loop settings
 	 */
 	private setupRedisClient(): RedisClientType {
 		const config: any = {
@@ -36,11 +40,19 @@ export class RedisManager {
 				host: this.credentials.host,
 				port: this.credentials.port,
 				tls: true,
+				// CRITICAL: Connection timeout to prevent hanging
+				connectTimeout: 2000,
+				// Disable reconnection attempts to prevent infinite loops
+				reconnectStrategy: false,
 			};
 		} else {
 			config.socket = {
 				host: this.credentials.host,
 				port: this.credentials.port,
+				// CRITICAL: Connection timeout to prevent hanging
+				connectTimeout: 2000,
+				// Disable reconnection attempts to prevent infinite loops
+				reconnectStrategy: false,
 			};
 		}
 
@@ -58,31 +70,150 @@ export class RedisManager {
 	}
 
 	/**
-	 * Check if Redis connection is available
+	 * Check if Redis connection is available and healthy
 	 */
 	isAvailable(): boolean {
-		return this.client !== null && this.client.isReady;
+		// For valid credentials, we should be able to create a client
+		// Don't check isReady until we actually attempt to connect
+		return this.client !== null && !this.connectionLost;
 	}
 
 	/**
-	 * Execute a Redis operation with connection management
+	 * Perform health check with Promise wrapper and timeout to prevent infinite loops
+	 */
+	async healthCheck(): Promise<boolean> {
+		const now = Date.now();
+		
+		// Skip if health check was done recently
+		if (now - this.lastHealthCheck < this.HEALTH_CHECK_INTERVAL && !this.connectionLost) {
+			return this.isAvailable();
+		}
+		
+		this.lastHealthCheck = now;
+		
+		// Use Promise wrapper pattern to prevent infinite loops
+		return new Promise((resolve, reject) => {
+			const client = this.getClient();
+			
+			if (!client) {
+				this.connectionLost = true;
+				resolve(false);
+				return;
+			}
+			
+			// Set timeout to prevent hanging
+			const timeoutId = setTimeout(() => {
+				this.connectionLost = true;
+				client.removeAllListeners('connect');
+				client.removeAllListeners('error');
+				reject(new Error('Redis health check timeout after 2 seconds'));
+			}, 2000);
+			
+			// Handle successful connection
+			const onConnect = async () => {
+				try {
+					clearTimeout(timeoutId);
+					client.removeAllListeners('error');
+					
+					// Test with ping
+					await client.ping();
+					this.connectionLost = false;
+					resolve(true);
+				} catch (pingError) {
+					this.connectionLost = true;
+					resolve(false);
+				}
+			};
+			
+			// Handle connection errors
+			const onError = (error: Error) => {
+				clearTimeout(timeoutId);
+				client.removeAllListeners('connect');
+				this.connectionLost = true;
+				reject(new Error(`Redis connection failed: ${error.message}`));
+			};
+			
+			// Set up event listeners
+			client.once('connect', onConnect);
+			client.once('error', onError);
+			
+			// Attempt connection if not ready
+			if (!client.isReady) {
+				client.connect().catch(onError);
+			} else {
+				// Already connected, test with ping
+				onConnect();
+			}
+		});
+	}
+
+	/**
+	 * Execute a Redis operation with Promise wrapper to prevent infinite loops
 	 */
 	async executeOperation<T>(operation: (client: RedisClientType) => Promise<T>): Promise<T> {
-		const client = this.getClient();
-		
-		try {
-			// Connect if not already connected
-			if (!client.isOpen) {
-				await client.connect();
+		return new Promise(async (resolve, reject) => {
+			try {
+				// Check health with timeout
+				const healthCheckPassed = await this.healthCheck();
+				
+				if (!healthCheckPassed) {
+					this.connectionLost = true;
+					reject(new Error(`Redis connection health check failed for ${this.credentials.host}:${this.credentials.port}. Connection is not available.`));
+					return;
+				}
+				
+				const client = this.getClient();
+				
+				// Set operation timeout
+				const timeoutId = setTimeout(() => {
+					this.connectionLost = true;
+					reject(new Error(`Redis operation timeout after 3 seconds for ${this.credentials.host}:${this.credentials.port}`));
+				}, 3000);
+				
+				try {
+					// Connect if not already connected
+					if (!client.isOpen) {
+						await client.connect();
+					}
+
+					// Execute the operation
+					const result = await operation(client);
+					
+					// Clear timeout and reset connection lost flag
+					clearTimeout(timeoutId);
+					this.connectionLost = false;
+					
+					resolve(result);
+				} catch (operationError: any) {
+					clearTimeout(timeoutId);
+					this.connectionLost = true;
+					reject(this.classifyConnectionError(operationError));
+				}
+			} catch (healthError: any) {
+				this.connectionLost = true;
+				reject(new Error(`Redis health check failed: ${healthError.message}`));
 			}
+		});
+	}
 
-			// Execute the operation
-			const result = await operation(client);
-			return result;
-
-		} catch (error: any) {
-			throw new Error(`Redis operation failed: ${error.message}`);
+	/**
+	 * Classify Redis connection errors for better error handling
+	 */
+	private classifyConnectionError(error: any): Error {
+		// Provide specific error messages for common connection issues
+		if (error.code === 'ECONNREFUSED') {
+			return new Error(`Redis connection refused. Please verify Redis server is running at ${this.credentials.host}:${this.credentials.port}`);
+		} else if (error.code === 'ENOTFOUND') {
+			return new Error(`Redis host not found: ${this.credentials.host}. Please verify the hostname/IP address.`);
+		} else if (error.code === 'ETIMEDOUT') {
+			return new Error(`Redis connection timeout. Please check network connectivity to ${this.credentials.host}:${this.credentials.port}`);
+		} else if (error.message && error.message.includes('invalid password')) {
+			return new Error(`Redis authentication failed. Please verify your password credentials.`);
+		} else if (error.message && error.message.includes('NOAUTH')) {
+			return new Error(`Redis requires authentication but no password provided. Please set password in credentials.`);
 		}
+		
+		return new Error(`Redis operation failed: ${error.message || 'Unknown error'}`);
 	}
 
 	/**
@@ -225,11 +356,11 @@ export class RedisManager {
 					await this.client.quit();
 				}
 			} catch (error: any) {
-				console.warn('Error during Redis cleanup:', error.message);
+				
 				try {
 					await this.client.disconnect();
 				} catch (disconnectError: any) {
-					console.warn('Error forcing Redis disconnect:', disconnectError.message);
+					
 				}
 			} finally {
 				this.client = null;

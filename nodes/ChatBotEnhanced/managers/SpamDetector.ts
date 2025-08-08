@@ -323,7 +323,7 @@ export class SpamDetector {
 				}
 			} catch (error) {
 				// Invalid regex pattern - log and continue
-				console.warn(`Invalid custom regex pattern: ${this.config.customRegexPattern}`);
+				
 			}
 		}
 
@@ -369,7 +369,7 @@ export class SpamDetector {
 			try {
 				return JSON.parse(data);
 			} catch (error) {
-				console.warn(`Failed to parse spam tracking state: ${error.message}`);
+				
 			}
 		}
 

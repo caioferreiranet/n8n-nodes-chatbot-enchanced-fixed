@@ -1,7 +1,7 @@
 const path = require('path');
 const { task, src, dest, parallel } = require('gulp');
 
-task('build:icons', parallel(copyNodeIcons, copyCredentialIcons));
+task('build:icons', copyNodeIcons);
 
 function copyNodeIcons() {
 	const nodeSource = path.resolve('nodes', '**', '*.{png,svg}');
