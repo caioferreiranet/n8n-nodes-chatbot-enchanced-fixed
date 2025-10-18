@@ -38,6 +38,7 @@ tests/
 docs/
 .bmad-core/
 .claude/
+.gemini/
 .web-bundles
 coverage/
 jest.cache/
@@ -49,8 +50,12 @@ jest.setup.js
 
 # Development files
 CLAUDE.md
+AGENTS.md
 CODE_OF_CONDUCT.md
 
 # Package locks (keep package-lock.json for consistency)
 yarn.lock
 pnpm-lock.yaml
+# BMAD (local only)
+.bmad-core/
+.bmad-*/
