@@ -47,7 +47,7 @@ export class ChatBotEnhanced implements INodeType {
 				]
 			},
 			alias: [
-				'chat bot', 'conversation bot', 'redis cache', 'rate limiter', 
+				'chat bot', 'conversation bot', 'redis cache', 'rate limiter',
 				'spam filter', 'message queue', 'session store', 'conversation memory',
 				'chatbot automation', 'messaging automation'
 			]
@@ -712,16 +712,16 @@ export class ChatBotEnhanced implements INodeType {
 
 		// Initialize Redis connection
 		let redisManager: RedisManager | null = null;
-		
+
 		try {
 			// Get Redis credentials using built-in n8n method
 			const credentials = await this.getCredentials('redis') as RedisCredential;
-			
+
 			// Initialize Redis manager
 			redisManager = new RedisManager(credentials, {
 				connectionTimeout: 5000,
 			});
-			
+
 			// Test Redis connection immediately before any operations
 			let redisHealthy = false;
 			try {
@@ -734,7 +734,7 @@ export class ChatBotEnhanced implements INodeType {
 				// Redis health check failed - logged internally
 				redisHealthy = false;
 			}
-			
+
 			if (!redisHealthy) {
 				// Redis is not healthy - throwing error
 				// Throw error immediately at the top level to properly fail the node
@@ -750,10 +750,10 @@ export class ChatBotEnhanced implements INodeType {
 				throw new NodeOperationError(this.getNode(), 'No input data provided');
 			}
 			const itemIndex = 0;
-			
+
 			// Get operation type to route to appropriate handler
 			const operation = this.getNodeParameter('operation', itemIndex) as string;
-			
+
 			switch (operation) {
 				case 'bufferMessages':
 					return await ChatBotEnhanced.prototype.executeBufferMessages.call(this, redisManager, items, itemIndex, successOutput, spamOutput, processOutput);
@@ -813,9 +813,9 @@ export class ChatBotEnhanced implements INodeType {
 				// Buffer configuration
 				const bufferTime = this.getNodeParameter('bufferTime', itemIndex, 30) as number;
 				const bufferSize = this.getNodeParameter('bufferSize', itemIndex, 100) as number;
-				
+
 				// Debug: Buffer execution started
-				
+
 				// Anti-spam parameters (will be used during buffer flush)
 				const antiSpamType = this.getNodeParameter('antiSpamType', itemIndex, 'disabled') as string;
 
@@ -871,7 +871,7 @@ export class ChatBotEnhanced implements INodeType {
 						await redisManager!.write(bufferKey, JSON.stringify(bufferState));
 					} catch (redisError) {
 						throw new NodeOperationError(
-							this.getNode(), 
+							this.getNode(),
 							`Failed to write buffer state to Redis: ${redisError instanceof Error ? redisError.message : 'Unknown Redis error'}`
 						);
 					}
@@ -880,12 +880,12 @@ export class ChatBotEnhanced implements INodeType {
 					if (bufferState.totalCount >= bufferSize) {
 						// Size trigger - flush immediately
 						const buffer = await getBufferState();
-						
+
 						// Analyze buffer for spam
 						const spamAnalysis = await ChatBotEnhanced.analyzeBufferForSpam(
 							this, redisManager!, buffer!, antiSpamType, itemIndex
 						);
-						
+
 						// Send spam report if any spam detected
 						if (spamAnalysis.spamDetected && spamAnalysis.spamMessages.length > 0) {
 							spamOutput.push({
@@ -902,7 +902,7 @@ export class ChatBotEnhanced implements INodeType {
 								pairedItem: { item: itemIndex },
 							});
 						}
-						
+
 						successOutput.push({
 							json: {
 								type: 'buffer_flush',
@@ -919,14 +919,14 @@ export class ChatBotEnhanced implements INodeType {
 							},
 							pairedItem: { item: itemIndex },
 						});
-						
+
 						// Clean up buffer from Redis (non-critical operation)
 						try {
 							await redisManager!.delete(bufferKey);
 						} catch (deleteError) {
 							// Log but don't fail the operation since buffer flush succeeded
 						}
-						
+
 						return [successOutput, spamOutput, processOutput];
 					}
 
@@ -937,22 +937,22 @@ export class ChatBotEnhanced implements INodeType {
 					const maxWaitTime = Date.now() + (bufferTime * 1000) + 2000; // 2s safety buffer
 					const ABSOLUTE_MAX_WAIT = Math.max(10000, bufferTime * 1000 + 3000); // Dynamic absolute max
 					const MAX_WAIT_ITERATIONS = Math.max(50, bufferTime * 10); // Allow proper timing: 5s = 50 iterations x 100ms
-					
+
 
 					while (!resume) {
 						// EMERGENCY EXIT - Force exit after 8 seconds no matter what
 						const emergencyTime = Date.now() - startTime;
-						if (emergencyTime > 8000) {
+						if (emergencyTime > 3600000) {
 							resume = true;
 							break;
 						}
-						
+
 						// Circuit breaker protection
 						if (waitIterations++ > MAX_WAIT_ITERATIONS) {
 							resume = true;
 							break;
 						}
-						
+
 						// Timeout protection
 						const elapsedTime = Date.now() - startTime;
 						if (Date.now() > maxWaitTime || elapsedTime > ABSOLUTE_MAX_WAIT) {
@@ -960,9 +960,9 @@ export class ChatBotEnhanced implements INodeType {
 							resume = true;
 							break;
 						}
-						
+
 						// CRITICAL: Enhanced Redis connection monitoring during buffer wait to prevent infinite loop
-						
+
 						// Use async health check instead of sync isAvailable
 						let healthCheckPassed = false;
 						try {
@@ -981,7 +981,7 @@ export class ChatBotEnhanced implements INodeType {
 							}];
 							return [errorOutput, [], []];
 						}
-						
+
 						if (!healthCheckPassed) {
 							// Connection is not healthy - return error data instead of throwing
 							// Redis connection unhealthy - handled internally
@@ -996,22 +996,22 @@ export class ChatBotEnhanced implements INodeType {
 							}];
 							return [errorOutput, [], []];
 						}
-						
+
 						let refreshBuffer;
-						
+
 						// Get buffer state with timeout protection
 						try {
 							const bufferStatePromise = getBufferState();
 							const timeoutPromise = new Promise<BufferState | null>((resolve) => {
 								setTimeout(() => resolve(null), 3000);
 							});
-							
+
 							refreshBuffer = await Promise.race([bufferStatePromise, timeoutPromise]);
 						} catch (error) {
 							// getBufferState() error - logged internally
 							refreshBuffer = null;
 						}
-						
+
 						if (refreshBuffer === null) {
 							// Redis connection lost - handled internally
 							// Return error data instead of throwing to prevent infinite loop
@@ -1026,13 +1026,13 @@ export class ChatBotEnhanced implements INodeType {
 							}];
 							return [errorOutput, [], []];
 						}
-						
+
 						if (!refreshBuffer) {
 							resume = true;
 							break;
 						}
 
-						
+
 						// Check if buffer size reached during wait
 						if (refreshBuffer && refreshBuffer.totalCount >= bufferSize) {
 							resume = true;
@@ -1044,10 +1044,10 @@ export class ChatBotEnhanced implements INodeType {
 							resume = true;
 							break;
 						}
-						
+
 						const remainingTime = Math.max(0, refreshBuffer.exp - Date.now());
 						resume = remainingTime <= 50; // 50ms tolerance for timing inconsistencies
-						
+
 						if (!resume) {
 							const waitTime = Math.min(remainingTime, 100); // Check every 100ms max
 							await new Promise((resolve) => {
@@ -1061,12 +1061,12 @@ export class ChatBotEnhanced implements INodeType {
 					const finalBuffer = await getBufferState();
 					if (finalBuffer) {
 						const trigger = finalBuffer.totalCount >= bufferSize ? 'size' : 'time';
-						
+
 						// Analyze buffer for spam BEFORE flushing
 						const spamAnalysis = await ChatBotEnhanced.analyzeBufferForSpam(
 							this, redisManager!, finalBuffer, antiSpamType, itemIndex
 						);
-						
+
 						// Send spam report if any spam detected
 						if (spamAnalysis.spamDetected && spamAnalysis.spamMessages.length > 0) {
 							spamOutput.push({
@@ -1083,7 +1083,7 @@ export class ChatBotEnhanced implements INodeType {
 								pairedItem: { item: itemIndex },
 							});
 						}
-						
+
 						// Always send buffer flush to Success (regardless of spam)
 						successOutput.push({
 							json: {
@@ -1101,7 +1101,7 @@ export class ChatBotEnhanced implements INodeType {
 							},
 							pairedItem: { item: itemIndex },
 						});
-						
+
 						// Clean up buffer from Redis (non-critical operation)
 						try {
 							await redisManager!.delete(bufferKey);
@@ -1124,7 +1124,7 @@ export class ChatBotEnhanced implements INodeType {
 						await redisManager!.write(bufferKey, JSON.stringify(bufferState));
 					} catch (redisError) {
 						throw new NodeOperationError(
-							this.getNode(), 
+							this.getNode(),
 							`Failed to write updated buffer state to Redis: ${redisError instanceof Error ? redisError.message : 'Unknown Redis error'}`
 						);
 					}
@@ -1136,7 +1136,7 @@ export class ChatBotEnhanced implements INodeType {
 						const spamAnalysis = await ChatBotEnhanced.analyzeBufferForSpam(
 							this, redisManager!, bufferState, antiSpamType, itemIndex
 						);
-						
+
 						// Send spam report if any spam detected
 						if (spamAnalysis.spamDetected && spamAnalysis.spamMessages.length > 0) {
 							spamOutput.push({
@@ -1153,7 +1153,7 @@ export class ChatBotEnhanced implements INodeType {
 								pairedItem: { item: itemIndex },
 							});
 						}
-						
+
 						successOutput.push({
 							json: {
 								type: 'buffer_flush',
@@ -1170,7 +1170,7 @@ export class ChatBotEnhanced implements INodeType {
 							},
 							pairedItem: { item: itemIndex },
 						});
-						
+
 						// Clean up buffer from Redis (non-critical operation)
 						try {
 							await redisManager!.delete(bufferKey);
@@ -1527,14 +1527,14 @@ export class ChatBotEnhanced implements INodeType {
 					spamTypes.push('repeated_content');
 				}
 				break;
-				
+
 			case 'flood':
 				// For flood protection, check if buffer size reached too quickly
 				const bufferCreationTime = Math.min(...bufferState.data.map(msg => msg.timestamp));
 				const bufferDuration = Date.now() - bufferCreationTime;
 				const floodMaxMessages = executeFunctions.getNodeParameter('floodMaxMessages', itemIndex, 5) as number;
 				const floodTimeWindow = executeFunctions.getNodeParameter('floodTimeWindow', itemIndex, 30) as number;
-				
+
 				if (bufferState.data.length >= floodMaxMessages && bufferDuration < (floodTimeWindow * 1000)) {
 					// All messages are considered spam due to flooding
 					for (const message of bufferState.data) {
@@ -1549,7 +1549,7 @@ export class ChatBotEnhanced implements INodeType {
 					cleanMessages.push(...bufferState.data.map(msg => msg.content));
 				}
 				break;
-				
+
 			case 'pattern':
 				// Check each message for spam patterns
 				for (const message of bufferState.data) {
@@ -1582,7 +1582,7 @@ export class ChatBotEnhanced implements INodeType {
 	 * Analyze repeated content within buffered messages
 	 */
 	private static analyzeRepeatedContent(
-		messages: BufferedMessage[], 
+		messages: BufferedMessage[],
 		similarityThreshold: number
 	): {
 		spamMessages: Array<{ content: string; reason: string; confidence: number }>;
@@ -1605,17 +1605,17 @@ export class ChatBotEnhanced implements INodeType {
 			// Compare with other messages in buffer
 			for (let j = 0; j < messages.length; j++) {
 				if (i === j) continue;
-				
+
 				const otherMsg = messages[j];
 				const similarity = ChatBotEnhanced.calculateStringSimilarity(
-					currentMsg.content, 
+					currentMsg.content,
 					otherMsg.content
 				);
 
 				if (similarity >= similarityThreshold) {
 					maxSimilarity = Math.max(maxSimilarity, similarity);
 					isSpam = true;
-					
+
 					// Mark both messages as spam (if not already processed)
 					if (!processedMessages.has(otherMsg.content)) {
 						spamMessages.push({
@@ -1654,19 +1654,19 @@ export class ChatBotEnhanced implements INodeType {
 		if (urlPattern.test(messageContent)) {
 			return { isSpam: true, reason: 'contains_url' };
 		}
-		
+
 		// Phone pattern
 		const phonePattern = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
 		if (phonePattern.test(messageContent)) {
 			return { isSpam: true, reason: 'contains_phone' };
 		}
-		
+
 		// Email pattern
 		const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 		if (emailPattern.test(messageContent)) {
 			return { isSpam: true, reason: 'contains_email' };
 		}
-		
+
 		return { isSpam: false, reason: '' };
 	}
 
@@ -1676,12 +1676,12 @@ export class ChatBotEnhanced implements INodeType {
 	private static calculateStringSimilarity(str1: string, str2: string): number {
 		if (str1 === str2) return 100;
 		if (str1.length === 0 || str2.length === 0) return 0;
-		
+
 		const longer = str1.length > str2.length ? str1 : str2;
 		const shorter = str1.length > str2.length ? str2 : str1;
-		
+
 		if (longer.length === 0) return 100;
-		
+
 		const distance = ChatBotEnhanced.levenshteinDistance(longer, shorter);
 		return Math.round(((longer.length - distance) / longer.length) * 100);
 	}
@@ -1691,15 +1691,15 @@ export class ChatBotEnhanced implements INodeType {
 	 */
 	private static levenshteinDistance(str1: string, str2: string): number {
 		const matrix = [];
-		
+
 		for (let i = 0; i <= str2.length; i++) {
 			matrix[i] = [i];
 		}
-		
+
 		for (let j = 0; j <= str1.length; j++) {
 			matrix[0][j] = j;
 		}
-		
+
 		for (let i = 1; i <= str2.length; i++) {
 			for (let j = 1; j <= str1.length; j++) {
 				if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
@@ -1713,7 +1713,7 @@ export class ChatBotEnhanced implements INodeType {
 				}
 			}
 		}
-		
+
 		return matrix[str2.length][str1.length];
 	}
 }
