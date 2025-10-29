@@ -1,6 +1,6 @@
 {
-  "name": "@trigidigital/n8n-nodes-chatbot-enchanced",
-  "version": "1.0.3",
+  "name": "n8n-nodes-chatbot-enchanced-fixed",
+  "version": "1.0.4",
   "description": "Advanced chatbot functionality with smart rate limiting, message buffering, session management, and Redis integration for scalable conversation automation",
   "keywords": [
     "n8n-community-node-package",
@@ -20,22 +20,26 @@
     "scalability",
     "session-management"
   ],
-  "license": "MIT",
   "homepage": "https://trigidigital.com",
+  "bugs": {
+    "url": "https://github.com/caioferreiranet/n8n-nodes-chatbot-enchanced-fixed/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caioferreiranet/n8n-nodes-chatbot-enchanced-fixed.git"
+  },
+  "license": "MIT",
   "author": {
     "name": "TrigiDigital",
     "email": "admin@trigidigital.com"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Trigi-Digital/n8n-nodes-chatbot-enchanced.git"
-  },
-  "engines": {
-    "node": ">=20.15"
-  },
-  "main": "index.js",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "npx rimraf dist && tsc && gulp build:icons",
+    "build": "rimraf dist && tsc && gulp build:icons",
     "dev": "tsc --watch",
     "format": "prettier nodes --write",
     "lint": "eslint nodes package.json",
@@ -46,30 +50,32 @@
     "bmad:list": "bmad-method list:agents",
     "bmad:validate": "bmad-method validate"
   },
-  "files": [
-    "dist"
-  ],
+  "dependencies": {
+    "redis": "^5.6.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.0.0",
+    "@types/node": "^24.9.2",
+    "@typescript-eslint/parser": "~8.32.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-n8n-nodes-base": "^1.16.3",
+    "gulp": "^5.0.1",
+    "gulp-cli": "^3.1.0",
+    "jest": "^29.0.0",
+    "n8n-workflow": "*",
+    "prettier": "^3.5.3",
+    "rimraf": "^5.0.10",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20.15"
+  },
   "n8n": {
     "n8nNodesApiVersion": 1,
     "nodes": [
       "dist/nodes/ChatBotEnhanced/ChatBotEnhanced.node.js",
       "dist/nodes/ChatBotEnhanced/ChatBotEnhancedRedisTrigger.node.js"
     ]
-  },
-  "devDependencies": {
-    "@typescript-eslint/parser": "~8.32.0",
-    "@types/jest": "^29.0.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-n8n-nodes-base": "^1.16.3",
-    "gulp": "^5.0.0",
-    "jest": "^29.0.0",
-    "n8n-workflow": "*",
-    "prettier": "^3.5.3",
-    "rimraf": "^5.0.5",
-    "ts-jest": "^29.2.5",
-    "typescript": "^5.8.2"
-  },
-  "dependencies": {
-    "redis": "^5.6.1"
   }
 }
